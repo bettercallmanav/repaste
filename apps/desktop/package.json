@@ -3,19 +3,29 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "tsdown --watch",
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "pack:mac": "electron-builder --mac --config electron-builder.json",
+    "pack:win": "electron-builder --win --config electron-builder.json",
+    "pack:linux": "electron-builder --linux --config electron-builder.json"
   },
   "dependencies": {
     "@clipm/contracts": "workspace:*",
-    "@clipm/shared": "workspace:*"
+    "@clipm/shared": "workspace:*",
+    "@clipm/server": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "better-sqlite3": "^12.6.2",
+    "effect": "catalog:"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/ws": "^8.5.0",
     "electron": "^40.6.0",
+    "electron-builder": "^26.0.12",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",

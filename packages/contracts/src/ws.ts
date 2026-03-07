@@ -1,18 +1,14 @@
 import { Schema } from "effect";
-import { ClipboardCommand, ClipboardEvent, ClipboardReadModel } from "./clipboard";
+import { ClipboardCommand, ClipboardEvent, ClipboardReadModel } from "./clipboard.ts";
 
 // ─── WebSocket Request/Response Protocol ─────────────────────────────────────
 
-export const WsRequestBody = Schema.Union(
-  Schema.Struct({
-    _tag: Schema.Literal("clipboard.getSnapshot"),
-  }),
-  Schema.Struct({
-    _tag: Schema.Literal("clipboard.dispatchCommand"),
+export const WsRequestBody = Schema.Union([
+  Schema.TaggedStruct("clipboard.getSnapshot", {}),
+  Schema.TaggedStruct("clipboard.dispatchCommand", {
     command: ClipboardCommand,
   }),
-  Schema.Struct({
-    _tag: Schema.Literal("clipboard.search"),
+  Schema.TaggedStruct("clipboard.search", {
     query: Schema.String,
     filters: Schema.optional(
       Schema.Struct({
@@ -22,7 +18,7 @@ export const WsRequestBody = Schema.Union(
       }),
     ),
   }),
-);
+]);
 export type WsRequestBody = typeof WsRequestBody.Type;
 
 export const WsRequest = Schema.Struct({
@@ -41,7 +37,7 @@ export const WsErrorResponse = Schema.Struct({
   error: Schema.Struct({ message: Schema.String }),
 });
 
-export const WsResponse = Schema.Union(WsSuccessResponse, WsErrorResponse);
+export const WsResponse = Schema.Union([WsSuccessResponse, WsErrorResponse]);
 export type WsResponse = typeof WsResponse.Type;
 
 export const WsPush = Schema.Struct({

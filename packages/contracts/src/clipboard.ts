@@ -1,25 +1,17 @@
 import { Schema } from "effect";
-import { ClipId, CommandId, EventId, IsoDateTime, NonNegativeInt, SnippetId } from "./baseSchemas";
+import { ClipId, CommandId, EventId, IsoDateTime, NonNegativeInt, SnippetId } from "./baseSchemas.ts";
 
 // ─── Content Types ───────────────────────────────────────────────────────────
 
-export const ContentType = Schema.Literal(
-  "text",
-  "image",
-  "richText",
-  "filePath",
-  "url",
-  "code",
-  "email",
-  "color",
-  "json",
-  "phone",
-);
+export const ContentType = Schema.Literals([
+  "text", "image", "richText", "filePath", "url",
+  "code", "email", "color", "json", "phone",
+]);
 export type ContentType = typeof ContentType.Type;
 
 // ─── Aggregate Kinds ─────────────────────────────────────────────────────────
 
-export const ClipboardAggregateKind = Schema.Literal("clip", "snippet", "settings");
+export const ClipboardAggregateKind = Schema.Literals(["clip", "snippet", "settings"]);
 export type ClipboardAggregateKind = typeof ClipboardAggregateKind.Type;
 
 // ─── Clip Metadata ───────────────────────────────────────────────────────────
@@ -126,11 +118,11 @@ export const SnippetDeleteCommand = Schema.Struct({
 export const SettingsUpdateCommand = Schema.Struct({
   type: Schema.Literal("settings.update"),
   commandId: CommandId,
-  settings: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  settings: Schema.Record(Schema.String, Schema.Unknown),
   updatedAt: IsoDateTime,
 });
 
-export const ClipboardCommand = Schema.Union(
+export const ClipboardCommand = Schema.Union([
   ClipCaptureCommand,
   ClipPinCommand,
   ClipUnpinCommand,
@@ -143,7 +135,7 @@ export const ClipboardCommand = Schema.Union(
   SnippetUpdateCommand,
   SnippetDeleteCommand,
   SettingsUpdateCommand,
-);
+]);
 export type ClipboardCommand = typeof ClipboardCommand.Type;
 
 // ─── Event Payloads ──────────────────────────────────────────────────────────
@@ -200,26 +192,18 @@ export const SnippetDeletedPayload = Schema.Struct({
 });
 
 export const SettingsUpdatedPayload = Schema.Struct({
-  settings: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  settings: Schema.Record(Schema.String, Schema.Unknown),
   updatedAt: IsoDateTime,
 });
 
 // ─── Event Types ─────────────────────────────────────────────────────────────
 
-export const ClipboardEventType = Schema.Literal(
-  "clip.captured",
-  "clip.pinned",
-  "clip.unpinned",
-  "clip.deleted",
-  "clip.tagged",
-  "clip.untagged",
-  "clip.merged",
-  "clip.pasted",
-  "snippet.created",
-  "snippet.updated",
-  "snippet.deleted",
+export const ClipboardEventType = Schema.Literals([
+  "clip.captured", "clip.pinned", "clip.unpinned", "clip.deleted",
+  "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted",
+  "snippet.created", "snippet.updated", "snippet.deleted",
   "settings.updated",
-);
+]);
 export type ClipboardEventType = typeof ClipboardEventType.Type;
 
 // ─── Event Envelope ──────────────────────────────────────────────────────────
@@ -233,7 +217,7 @@ export const ClipboardEvent = Schema.Struct({
   payload: Schema.Unknown,
   occurredAt: IsoDateTime,
   commandId: Schema.NullOr(CommandId),
-  metadata: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  metadata: Schema.Record(Schema.String, Schema.Unknown),
 });
 export type ClipboardEvent = typeof ClipboardEvent.Type;
 
@@ -276,7 +260,7 @@ export const AppSettings = Schema.Struct({
   startAtLogin: Schema.Boolean,
   deduplicateConsecutive: Schema.Boolean,
   ignoredApps: Schema.Array(Schema.String),
-  theme: Schema.Literal("system", "light", "dark"),
+  theme: Schema.Literals(["system", "light", "dark"]),
 });
 export type AppSettings = typeof AppSettings.Type;
 
