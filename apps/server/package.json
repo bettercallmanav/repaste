@@ -1,0 +1,30 @@
+{
+  "name": "@clipm/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clipm/contracts": "workspace:*",
+    "@clipm/shared": "workspace:*",
+    "effect": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/sql-sqlite-bun": "catalog:",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/ws": "^8.5.14",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

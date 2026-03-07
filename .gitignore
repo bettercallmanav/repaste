@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+.turbo/
+*.log
+.DS_Store
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,28 @@
+{
+  "name": "@clipm/shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./contentAnalyzer": {
+      "types": "./src/contentAnalyzer.ts",
+      "import": "./src/contentAnalyzer.ts"
+    },
+    "./textUtils": {
+      "types": "./src/textUtils.ts",
+      "import": "./src/textUtils.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clipm/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
