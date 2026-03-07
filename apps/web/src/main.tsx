@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { Clipboard, Scissors, Settings } from "lucide-react";
+import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { useClipboardStore } from "./store.ts";
 import { SearchBar } from "./components/SearchBar.tsx";
 import { ClipList } from "./components/ClipList.tsx";
@@ -10,6 +11,10 @@ import { SnippetManager } from "./components/SnippetManager.tsx";
 import { SettingsPanel } from "./components/Settings.tsx";
 import "./app.css";
 
+type DesktopWindow = Window & {
+  desktopBridge?: ClipboardDesktopBridge;
+};
+
 function App() {
   const { init, clips, snippets, selectedClipId, activeView, setActiveView } = useClipboardStore();
   const [showSettings, setShowSettings] = useState(false);
@@ -17,6 +22,19 @@ function App() {
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const desktopBridge = (window as DesktopWindow).desktopBridge;
+    if (!desktopBridge?.onTrayClipSelected) return;
+
+    return desktopBridge.onTrayClipSelected((clipId) => {
+      const { clearSearch, selectClip } = useClipboardStore.getState();
+      clearSearch();
+      selectClip(clipId);
+      setShowSettings(false);
+      setActiveView("clips");
+    });
+  }, [setActiveView]);
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

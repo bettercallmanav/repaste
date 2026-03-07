@@ -7,6 +7,9 @@ export interface ClipboardDesktopBridge {
   /** Write text content to the system clipboard */
   readonly writeClipboard: (text: string) => Promise<void>;
 
+  /** Write image content to the system clipboard from a data URL */
+  readonly writeImageDataUrl: (dataUrl: string) => Promise<boolean>;
+
   /** Read current text from the system clipboard */
   readonly readClipboard: () => Promise<string>;
 
@@ -23,6 +26,9 @@ export interface ClipboardDesktopBridge {
 
   /** Subscribe to global shortcut activations */
   readonly onGlobalShortcut: (listener: (shortcut: string) => void) => () => void;
+
+  /** Subscribe to tray menu clip selections */
+  readonly onTrayClipSelected: (listener: (clipId: string) => void) => () => void;
 }
 
 export interface ContextMenuItem {
@@ -35,9 +41,11 @@ export interface ContextMenuItem {
 
 export const IPC_CHANNELS = {
   writeClipboard: "clipboard:write",
+  writeImageDataUrl: "clipboard:write-image-data-url",
   readClipboard: "clipboard:read",
   contextMenu: "desktop:context-menu",
   openExternal: "desktop:open-external",
   menuAction: "desktop:menu-action",
   globalShortcut: "desktop:global-shortcut",
+  trayClipSelected: "tray:clip-selected",
 } as const;

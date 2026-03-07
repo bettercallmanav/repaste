@@ -1,10 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { IPC_CHANNELS } from "@clipm/contracts/ipc";
 import type { ClipboardDesktopBridge, ContextMenuItem } from "@clipm/contracts/ipc";
 
 const bridge: ClipboardDesktopBridge = {
   getWsUrl: () => process.env.CLIPM_DESKTOP_WS_URL ?? null,
 
   writeClipboard: (text: string) => ipcRenderer.invoke("clipboard:write", text),
+
+  writeImageDataUrl: (dataUrl: string) => ipcRenderer.invoke(IPC_CHANNELS.writeImageDataUrl, dataUrl),
 
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
 
@@ -15,14 +18,20 @@ const bridge: ClipboardDesktopBridge = {
 
   onMenuAction: (listener: (action: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, action: string) => listener(action);
-    ipcRenderer.on("desktop:menu-action", handler);
-    return () => ipcRenderer.removeListener("desktop:menu-action", handler);
+    ipcRenderer.on(IPC_CHANNELS.menuAction, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.menuAction, handler);
   },
 
   onGlobalShortcut: (listener: (shortcut: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, shortcut: string) => listener(shortcut);
-    ipcRenderer.on("desktop:global-shortcut", handler);
-    return () => ipcRenderer.removeListener("desktop:global-shortcut", handler);
+    ipcRenderer.on(IPC_CHANNELS.globalShortcut, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.globalShortcut, handler);
+  },
+
+  onTrayClipSelected: (listener: (clipId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, clipId: string) => listener(clipId);
+    ipcRenderer.on(IPC_CHANNELS.trayClipSelected, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.trayClipSelected, handler);
   },
 };
 

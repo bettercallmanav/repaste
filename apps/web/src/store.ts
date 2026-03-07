@@ -1,9 +1,18 @@
 import { create } from "zustand";
 import type { Clip, ClipboardCommand, Snippet } from "@clipm/contracts";
 import { WS_CHANNELS } from "@clipm/contracts";
+import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { api } from "./api.ts";
 
 type ActiveView = "clips" | "snippets";
+
+let latestSearchRequestId = 0;
+let initPromise: Promise<void> | null = null;
+let unsubscribeDomainEvents: (() => void) | null = null;
+
+type DesktopWindow = Window & {
+  desktopBridge?: ClipboardDesktopBridge;
+};
 
 interface ClipboardStore {
   // State
@@ -26,6 +35,7 @@ interface ClipboardStore {
   toggleClipSelection: (id: string) => void;
   clearSelection: () => void;
   setActiveView: (view: ActiveView) => void;
+  copyClip: (clipId: string) => Promise<void>;
   pinClip: (clipId: string) => Promise<void>;
   unpinClip: (clipId: string) => Promise<void>;
   deleteClip: (clipId: string) => Promise<void>;
@@ -40,6 +50,87 @@ interface ClipboardStore {
   deleteSnippet: (snippetId: string) => Promise<void>;
 }
 
+function getDesktopBridge(): ClipboardDesktopBridge | undefined {
+  return (window as DesktopWindow).desktopBridge;
+}
+
+async function writeTextToClipboard(text: string): Promise<void> {
+  const desktopBridge = getDesktopBridge();
+  if (desktopBridge) {
+    await desktopBridge.writeClipboard(text);
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+}
+
+async function writeImageToClipboard(dataUrl: string): Promise<void> {
+  const desktopBridge = getDesktopBridge();
+  if (desktopBridge) {
+    const success = await desktopBridge.writeImageDataUrl(dataUrl);
+    if (success) return;
+  }
+
+  if (typeof ClipboardItem === "undefined" || typeof navigator.clipboard?.write !== "function") {
+    throw new Error("Image clipboard writes are not supported in this environment");
+  }
+
+  const blob = await fetch(dataUrl).then((response) => response.blob());
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      [blob.type || "image/png"]: blob,
+    }),
+  ]);
+}
+
+async function writeClipToClipboard(clip: Clip): Promise<void> {
+  if (clip.contentType === "image" && clip.imageDataUrl) {
+    await writeImageToClipboard(clip.imageDataUrl);
+    return;
+  }
+
+  await writeTextToClipboard(clip.content);
+}
+
+async function runSearch(
+  query: string,
+  set: (state: Partial<ClipboardStore>) => void,
+  get: () => ClipboardStore,
+): Promise<void> {
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length === 0) {
+    latestSearchRequestId++;
+    set({ searchResults: null });
+    return;
+  }
+
+  const requestId = ++latestSearchRequestId;
+
+  try {
+    const { clips } = await api.search(normalizedQuery);
+    if (requestId !== latestSearchRequestId) return;
+    if (get().searchQuery.trim() !== normalizedQuery) return;
+    set({ searchResults: clips });
+  } catch (err) {
+    if (requestId === latestSearchRequestId) {
+      console.error("Search failed", err);
+    }
+  }
+}
+
+async function refreshSnapshot(
+  set: (state: Partial<ClipboardStore>) => void,
+  get: () => ClipboardStore,
+): Promise<void> {
+  const snapshot = await api.getSnapshot();
+  set({
+    clips: snapshot.clips,
+    snippets: snapshot.snippets,
+    knownTags: snapshot.knownTags,
+  });
+
+  await runSearch(get().searchQuery, set, get);
+}
+
 export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   clips: [],
   snippets: [],
@@ -52,47 +143,35 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   loading: true,
 
   init: async () => {
-    try {
-      const snapshot = await api.getSnapshot();
-      set({
-        clips: snapshot.clips,
-        snippets: snapshot.snippets,
-        knownTags: snapshot.knownTags,
-        loading: false,
-      });
-    } catch (err) {
-      console.error("Failed to load snapshot", err);
-      set({ loading: false });
-    }
+    if (initPromise) return initPromise;
 
-    // Subscribe to domain events for real-time updates
-    api.subscribe(WS_CHANNELS.domainEvent, () => {
-      api.getSnapshot().then((snapshot) => {
-        set({
-          clips: snapshot.clips,
-          snippets: snapshot.snippets,
-          knownTags: snapshot.knownTags,
+    initPromise = (async () => {
+      try {
+        await refreshSnapshot(set, get);
+      } catch (err) {
+        console.error("Failed to load snapshot", err);
+      } finally {
+        set({ loading: false });
+      }
+
+      if (!unsubscribeDomainEvents) {
+        unsubscribeDomainEvents = api.subscribe(WS_CHANNELS.domainEvent, () => {
+          void refreshSnapshot(set, get).catch(console.error);
         });
-      }).catch(console.error);
-    });
+      }
+    })();
+
+    return initPromise;
   },
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  search: async (query) => {
-    if (query.trim().length === 0) {
-      set({ searchResults: null });
-      return;
-    }
-    try {
-      const { clips } = await api.search(query);
-      set({ searchResults: clips });
-    } catch (err) {
-      console.error("Search failed", err);
-    }
-  },
+  search: async (query) => runSearch(query, set, get),
 
-  clearSearch: () => set({ searchQuery: "", searchResults: null }),
+  clearSearch: () => {
+    latestSearchRequestId++;
+    set({ searchQuery: "", searchResults: null });
+  },
 
   selectClip: (id) => set({ selectedClipId: id }),
 
@@ -108,6 +187,12 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   clearSelection: () => set({ selectedClipIds: [] }),
 
   setActiveView: (view) => set({ activeView: view }),
+
+  copyClip: async (clipId) => {
+    const clip = get().clips.find((currentClip) => currentClip.id === clipId);
+    if (!clip) return;
+    await writeClipToClipboard(clip);
+  },
 
   pinClip: async (clipId) => {
     await api.dispatch({
@@ -152,10 +237,14 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   },
 
   pasteClip: async (clipId) => {
+    const clip = get().clips.find((currentClip) => currentClip.id === clipId);
+    if (!clip) return;
+    await writeClipToClipboard(clip);
     await api.dispatch({
       commandId: crypto.randomUUID(),
       type: "clip.paste",
       clipId,
+      pastedAt: new Date().toISOString(),
     } as ClipboardCommand);
   },
 

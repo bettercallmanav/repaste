@@ -16,6 +16,15 @@ const PinInput = Schema.Struct({ id: ClipId, pinned: Schema.Number });
 const TagsInput = Schema.Struct({ id: ClipId, tagsJson: Schema.String });
 const SoftDeleteInput = Schema.Struct({ id: ClipId, deletedAt: Schema.String });
 
+function toFtsMatchQuery(query: string): string {
+  return query
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .map((token) => `"${token.replace(/"/g, "\"\"")}"`)
+    .join(" ");
+}
+
 const makeProjectionClipRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
@@ -126,8 +135,16 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       Effect.mapError(toPersistenceSqlError("ProjectionClips.deleteById")),
     );
 
-  const search: ProjectionClipRepositoryShape["search"] = (input) =>
-    searchRows(input).pipe(Effect.mapError(toPersistenceSqlError("ProjectionClips.search")));
+  const search: ProjectionClipRepositoryShape["search"] = (input) => {
+    const query = toFtsMatchQuery(input.query);
+    if (query.length === 0) {
+      return Effect.succeed([]);
+    }
+
+    return searchRows({ ...input, query }).pipe(
+      Effect.mapError(toPersistenceSqlError("ProjectionClips.search")),
+    );
+  };
 
   const updatePinned: ProjectionClipRepositoryShape["updatePinned"] = (id, pinned) =>
     SqlSchema.void({

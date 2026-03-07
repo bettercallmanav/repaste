@@ -53,21 +53,21 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
       if (readModel.settings.deduplicateConsecutive) {
         const latest = readModel.clips[0];
         if (latest && latest.content === command.content && latest.deletedAt === null) {
-          // Emit a paste event instead of re-capturing
-          return {
+          const deduplicatedEvent: EventBase = {
             ...withEventBase({
               aggregateKind: "clip",
               aggregateId: latest.id,
               occurredAt: command.capturedAt,
               commandId: command.commandId,
             }),
-            type: "clip.pasted",
-            payload: { clipId: latest.id, pastedAt: command.capturedAt },
+            type: "clip.captureDeduplicated",
+            payload: { clipId: latest.id, capturedAt: command.capturedAt },
           };
+          return deduplicatedEvent;
         }
       }
 
-      return {
+      const capturedEvent: EventBase = {
         ...withEventBase({
           aggregateKind: "clip",
           aggregateId: command.clipId,
@@ -87,6 +87,40 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           capturedAt: command.capturedAt,
         },
       };
+
+      const activeClipsAfterCapture = [
+        { id: command.clipId, pinned: false, deletedAt: null },
+        ...readModel.clips.filter((clip) => clip.deletedAt === null),
+      ];
+      const overflowCount = Math.max(
+        0,
+        activeClipsAfterCapture.length - readModel.settings.maxHistorySize,
+      );
+
+      if (overflowCount === 0) return capturedEvent;
+
+      const overflowClips = activeClipsAfterCapture
+        .filter((clip) => !clip.pinned)
+        .slice(-overflowCount);
+
+      if (overflowClips.length === 0) return capturedEvent;
+
+      return [
+        capturedEvent,
+        ...overflowClips.map((clip) => ({
+          ...withEventBase({
+            aggregateKind: "clip" as const,
+            aggregateId: clip.id,
+            occurredAt: command.capturedAt,
+            commandId: command.commandId,
+          }),
+          type: "clip.deleted" as const,
+          payload: {
+            clipId: clip.id,
+            deletedAt: command.capturedAt,
+          },
+        })),
+      ];
     }
 
     case "clip.pin": {

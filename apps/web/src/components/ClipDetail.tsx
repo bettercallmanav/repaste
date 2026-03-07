@@ -13,7 +13,7 @@ function DetailField({ label, value }: { label: string; value: string }) {
 }
 
 export function ClipDetail() {
-  const { clips, selectedClipId, selectClip, pinClip, unpinClip, deleteClip } =
+  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip } =
     useClipboardStore();
 
   const clip = clips.find((c: Clip) => c.id === selectedClipId);
@@ -71,7 +71,7 @@ export function ClipDetail() {
       {/* Actions */}
       <div className="flex gap-2 border-t border-zinc-700/50 p-3">
         <button
-          onClick={() => navigator.clipboard.writeText(clip.content)}
+          onClick={() => { void copyClip(clip.id); }}
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
         >
           <Copy className="size-3.5" />

@@ -1,11 +1,12 @@
-import { app, clipboard, ipcMain, shell, Menu } from "electron";
+import { app, clipboard, ipcMain, shell, Menu, nativeImage } from "electron";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { Effect, Layer } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { ClipboardCommand } from "@clipm/contracts";
+import { WS_CHANNELS } from "@clipm/contracts";
+import type { ClipboardCommand, ClipboardReadModel } from "@clipm/contracts";
 import { IPC_CHANNELS } from "@clipm/contracts/ipc";
 import { makeServerProgram, makeRuntimeLayer } from "@clipm/server/main";
 
@@ -49,6 +50,18 @@ const clipboardMonitor = new ClipboardMonitor();
 
 let serverWs: WebSocket | null = null;
 let isQuitting = false;
+let nextServerRequestId = 1;
+
+const pendingServerRequests = new Map<
+  string,
+  {
+    resolve: (result: unknown) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+
+const SERVER_REQUEST_TIMEOUT_MS = 5_000;
 
 // ─── In-process Server ──────────────────────────────────────────────────────
 
@@ -121,18 +134,24 @@ function connectToServer(): void {
     console.log("Connected to server via WebSocket");
     // Start clipboard monitoring once connected
     clipboardMonitor.start(dispatchCommand);
+    refreshTrayRecentClips();
+  });
+
+  serverWs.on("message", (raw) => {
+    handleServerMessage(raw);
   });
 
   serverWs.on("close", () => {
     serverWs = null;
     clipboardMonitor.stop();
+    clearPendingServerRequests("Server connection closed");
     if (!isQuitting) {
       setTimeout(connectToServer, 1000);
     }
   });
 
   serverWs.on("error", () => {
-    // Will trigger close event
+    clearPendingServerRequests("Server connection error");
   });
 }
 
@@ -150,12 +169,114 @@ function dispatchCommand(command: ClipboardCommand): void {
   serverWs.send(JSON.stringify(message));
 }
 
+function clearPendingServerRequests(message: string): void {
+  for (const pending of pendingServerRequests.values()) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error(message));
+  }
+  pendingServerRequests.clear();
+}
+
+function sendServerRequest<T>(body: { _tag: string; [key: string]: unknown }): Promise<T> {
+  if (!serverWs || serverWs.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error("Server is not connected"));
+  }
+
+  const id = `desktop-${nextServerRequestId++}`;
+
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingServerRequests.delete(id);
+      reject(new Error(`Server request timed out: ${body._tag}`));
+    }, SERVER_REQUEST_TIMEOUT_MS);
+
+    pendingServerRequests.set(id, {
+      resolve: resolve as (result: unknown) => void,
+      reject,
+      timeout,
+    });
+
+    serverWs!.send(JSON.stringify({ id, body }));
+  });
+}
+
+function handleServerMessage(raw: WebSocket.RawData): void {
+  const text = (() => {
+    if (typeof raw === "string") return raw;
+    if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString("utf8");
+    if (Array.isArray(raw)) return Buffer.concat(raw).toString("utf8");
+    return Buffer.from(raw).toString("utf8");
+  })();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return;
+  }
+
+  if (typeof parsed !== "object" || parsed === null) return;
+
+  if ("channel" in parsed && parsed.channel === WS_CHANNELS.domainEvent) {
+    refreshTrayRecentClips();
+    return;
+  }
+
+  if (!("id" in parsed) || typeof parsed.id !== "string") return;
+
+  const pending = pendingServerRequests.get(parsed.id);
+  if (!pending) return;
+
+  clearTimeout(pending.timeout);
+  pendingServerRequests.delete(parsed.id);
+
+  if ("error" in parsed && parsed.error && typeof parsed.error === "object") {
+    const error = parsed.error as { message?: string };
+    pending.reject(new Error(error.message ?? "Unknown server error"));
+    return;
+  }
+
+  pending.resolve("result" in parsed ? parsed.result : undefined);
+}
+
+function refreshTrayRecentClips(): void {
+  const mainWindow = windowManager.getWindow();
+  if (!mainWindow) return;
+
+  void sendServerRequest<ClipboardReadModel>({
+    _tag: "clipboard.getSnapshot",
+  })
+    .then((snapshot) => {
+      trayManager.updateRecentClips(
+        snapshot.clips.map((clip) => ({ id: clip.id, preview: clip.preview })),
+        mainWindow,
+      );
+    })
+    .catch((error) => {
+      if (!isQuitting) {
+        console.error("[tray] Failed to refresh recent clips:", error);
+      }
+    });
+}
+
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.writeClipboard, (_event, text: unknown) => {
     if (typeof text !== "string") return;
     clipboard.writeText(text);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.writeImageDataUrl, (_event, dataUrl: unknown) => {
+    if (typeof dataUrl !== "string") return false;
+    try {
+      const image = nativeImage.createFromDataURL(dataUrl);
+      if (image.isEmpty()) return false;
+      clipboard.writeImage(image);
+      return true;
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.readClipboard, () => {

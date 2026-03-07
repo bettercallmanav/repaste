@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { clipboard } from "electron";
 import { categorize, extractMetadata } from "@clipm/shared/contentAnalyzer";
 import type { ClipboardCommand } from "@clipm/contracts";
@@ -47,6 +48,7 @@ export class ClipboardMonitor {
     const text = clipboard.readText() ?? "";
 
     if (text.length > 0) {
+      this.lastImageHash = "";
       if (text !== this.lastText) {
         this.lastText = text;
         this.emitTextCapture(text);
@@ -55,6 +57,7 @@ export class ClipboardMonitor {
     }
 
     // Only reach here when clipboard has NO text (e.g. screenshot)
+    this.lastText = "";
     const img = clipboard.readImage();
     if (!img.isEmpty()) {
       const hash = this.hashImage();
@@ -62,7 +65,10 @@ export class ClipboardMonitor {
         this.lastImageHash = hash;
         this.emitImageCapture(img);
       }
+      return;
     }
+
+    this.lastImageHash = "";
   }
 
   private emitTextCapture(text: string): void {
@@ -120,10 +126,8 @@ export class ClipboardMonitor {
     try {
       const img = clipboard.readImage();
       if (img.isEmpty()) return "";
-      // Use bitmap size as a cheap hash — full pixel comparison is too expensive
-      const size = img.getSize();
       const bitmap = img.toBitmap();
-      return `${size.width}x${size.height}:${bitmap.length}`;
+      return createHash("sha1").update(bitmap).digest("hex");
     } catch {
       return "";
     }

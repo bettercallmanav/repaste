@@ -1,5 +1,6 @@
 import { Tray, Menu, nativeImage, type BrowserWindow } from "electron";
 import path from "node:path";
+import { IPC_CHANNELS } from "@clipm/contracts/ipc";
 
 /**
  * Manages the macOS / Windows / Linux system tray icon and quick-access menu.
@@ -63,7 +64,7 @@ export class TrayManager {
     const clipItems: Electron.MenuItemConstructorOptions[] = this.recentClips.map((clip) => ({
       label: clip.preview.slice(0, 60).replace(/\n/g, " "),
       click: () => {
-        mainWindow.webContents.send("tray:clip-selected", clip.id);
+        mainWindow.webContents.send(IPC_CHANNELS.trayClipSelected, clip.id);
         mainWindow.show();
         mainWindow.focus();
       },

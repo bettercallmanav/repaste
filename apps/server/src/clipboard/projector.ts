@@ -106,27 +106,9 @@ export function projectEvent(
             deletedAt: null,
             metadata: p.metadata,
           };
-          const nextClips = [newClip, ...nextBase.clips];
-          // Enforce max history: soft-delete oldest non-pinned clips beyond limit
-          const maxHistory = nextBase.settings.maxHistorySize;
-          const activeClips = nextClips.filter((c) => c.deletedAt === null);
-          if (activeClips.length > maxHistory) {
-            const overflow = activeClips.filter((c) => !c.pinned).slice(maxHistory);
-            const overflowIds = new Set(overflow.map((c) => c.id));
-            return {
-              ...nextBase,
-              clips: nextClips.map((c) =>
-                overflowIds.has(c.id) ? { ...c, deletedAt: event.occurredAt } : c,
-              ),
-              stats: {
-                ...nextBase.stats,
-                totalClips: (nextBase.stats.totalClips + 1) as ClipboardReadModel["stats"]["totalClips"],
-              },
-            };
-          }
           return {
             ...nextBase,
-            clips: nextClips,
+            clips: [newClip, ...nextBase.clips],
             stats: {
               ...nextBase.stats,
               totalClips: (nextBase.stats.totalClips + 1) as ClipboardReadModel["stats"]["totalClips"],

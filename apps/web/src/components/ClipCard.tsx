@@ -39,7 +39,7 @@ interface ClipCardProps {
 }
 
 export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
-  const { selectClip, pinClip, unpinClip, deleteClip, pasteClip, toggleClipSelection } = useClipboardStore();
+  const { copyClip, selectClip, pinClip, unpinClip, deleteClip, pasteClip, toggleClipSelection } = useClipboardStore();
   const colorClass = CONTENT_TYPE_COLORS[clip.contentType] ?? "text-zinc-400";
 
   return (
@@ -117,7 +117,7 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              navigator.clipboard.writeText(clip.content);
+              void copyClip(clip.id);
             }}
             className="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
             title="Copy to clipboard"

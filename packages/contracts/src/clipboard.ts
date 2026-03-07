@@ -169,6 +169,10 @@ export const ClipMergedPayload = Schema.Struct({
 });
 
 export const ClipPastedPayload = Schema.Struct({ clipId: ClipId, pastedAt: IsoDateTime });
+export const ClipCaptureDeduplicatedPayload = Schema.Struct({
+  clipId: ClipId,
+  capturedAt: IsoDateTime,
+});
 
 export const SnippetCreatedPayload = Schema.Struct({
   snippetId: SnippetId,
@@ -201,6 +205,7 @@ export const SettingsUpdatedPayload = Schema.Struct({
 export const ClipboardEventType = Schema.Literals([
   "clip.captured", "clip.pinned", "clip.unpinned", "clip.deleted",
   "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted",
+  "clip.captureDeduplicated",
   "snippet.created", "snippet.updated", "snippet.deleted",
   "settings.updated",
 ]);
