@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { clipboard, nativeImage } from "electron";
 import { categorize, extractMetadata } from "@clipm/shared/contentAnalyzer";
 import type { ClipboardCommand } from "@clipm/contracts";
+import type { OcrProvider } from "./ocr/OcrProvider.ts";
 
 const POLL_INTERVAL_MS = 500;
 const IMAGE_PREVIEW_MAX_EDGE = 720;
@@ -25,10 +26,11 @@ const IMAGE_FILE_EXTENSIONS = new Set([
   ".ico",
 ]);
 
-export type CaptureHandler = (command: ClipboardCommand) => void;
+export type CaptureHandler = (command: ClipboardCommand) => void | Promise<void>;
 
 interface ClipboardMonitorOptions {
   readonly imageAssetDir: string;
+  readonly ocrProvider: OcrProvider;
 }
 
 interface ClipboardSnapshot {
@@ -45,10 +47,12 @@ export class ClipboardMonitor {
   private lastSnapshotKey = "";
   private handler: CaptureHandler | null = null;
   private imageAssetDir: string | null = null;
+  private ocrProvider: OcrProvider | null = null;
 
   start(handler: CaptureHandler, options: ClipboardMonitorOptions): void {
     this.handler = handler;
     this.imageAssetDir = options.imageAssetDir;
+    this.ocrProvider = options.ocrProvider;
     mkdirSync(this.imageAssetDir, { recursive: true });
 
     // Seed with current clipboard content so we don't capture on launch
@@ -64,6 +68,7 @@ export class ClipboardMonitor {
     }
     this.handler = null;
     this.imageAssetDir = null;
+    this.ocrProvider = null;
   }
 
   private poll(): void {
@@ -98,20 +103,26 @@ export class ClipboardMonitor {
       capturedAt: now,
     } as ClipboardCommand;
 
-    this.handler!(command);
+    void this.handler?.(command);
   }
 
-  private emitImageCapture(img: Electron.NativeImage, assetId: string): void {
+  private async emitImageCapture(img: Electron.NativeImage, assetId: string): Promise<void> {
+    const handler = this.handler;
+    if (!handler) {
+      return;
+    }
+
     const dataUrl = this.createPreviewDataUrl(img);
     const { width, height } = img.getSize();
     const { imageAssetPath, imageMimeType } = this.persistImageAsset(img, assetId);
     const preview = `[Image ${width}x${height}]`;
     const now = new Date().toISOString();
+    const clipId = crypto.randomUUID();
 
     const command = {
       commandId: crypto.randomUUID(),
       type: "clip.capture",
-      clipId: crypto.randomUUID(),
+      clipId,
       content: "[Image]",
       contentType: "image" as const,
       category: "image" as const,
@@ -134,7 +145,28 @@ export class ClipboardMonitor {
       capturedAt: now,
     } as ClipboardCommand;
 
-    this.handler!(command);
+    await Promise.resolve(handler(command));
+
+    if (!imageAssetPath || !this.ocrProvider) {
+      return;
+    }
+
+    try {
+      const ocrText = await this.ocrProvider.extractText(imageAssetPath);
+      if (!ocrText) {
+        return;
+      }
+
+      await Promise.resolve(handler({
+        commandId: crypto.randomUUID(),
+        type: "clip.updateOcr",
+        clipId,
+        ocrText,
+        updatedAt: new Date().toISOString(),
+      } as ClipboardCommand));
+    } catch {
+      // OCR is best-effort. Failed extraction should not block capture.
+    }
   }
 
   private hashNativeImage(img: Electron.NativeImage): string {
@@ -168,7 +200,7 @@ export class ClipboardMonitor {
         if (hash.length > 0) {
           return {
             key: `image:${hash}`,
-            emit: () => this.emitImageCapture(directImage, hash),
+            emit: () => { void this.emitImageCapture(directImage, hash); },
           };
         }
       }
@@ -182,7 +214,7 @@ export class ClipboardMonitor {
 
     return {
       key: `image-file:${hash}`,
-      emit: () => this.emitImageCapture(imageFile, hash),
+      emit: () => { void this.emitImageCapture(imageFile, hash); },
     };
   }
 

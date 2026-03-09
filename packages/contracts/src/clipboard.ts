@@ -95,6 +95,14 @@ export const ClipPasteCommand = Schema.Struct({
   pastedAt: IsoDateTime,
 });
 
+export const ClipUpdateOcrCommand = Schema.Struct({
+  type: Schema.Literal("clip.updateOcr"),
+  commandId: CommandId,
+  clipId: ClipId,
+  ocrText: Schema.String,
+  updatedAt: IsoDateTime,
+});
+
 export const SnippetCreateCommand = Schema.Struct({
   type: Schema.Literal("snippet.create"),
   commandId: CommandId,
@@ -137,6 +145,7 @@ export const ClipboardCommand = Schema.Union([
   ClipUntagCommand,
   ClipMergeCommand,
   ClipPasteCommand,
+  ClipUpdateOcrCommand,
   SnippetCreateCommand,
   SnippetUpdateCommand,
   SnippetDeleteCommand,
@@ -181,6 +190,11 @@ export const ClipMergedPayload = Schema.Struct({
 });
 
 export const ClipPastedPayload = Schema.Struct({ clipId: ClipId, pastedAt: IsoDateTime });
+export const ClipOcrUpdatedPayload = Schema.Struct({
+  clipId: ClipId,
+  ocrText: Schema.String,
+  updatedAt: IsoDateTime,
+});
 export const ClipCaptureDeduplicatedPayload = Schema.Struct({
   clipId: ClipId,
   capturedAt: IsoDateTime,
@@ -216,7 +230,7 @@ export const SettingsUpdatedPayload = Schema.Struct({
 
 export const ClipboardEventType = Schema.Literals([
   "clip.captured", "clip.pinned", "clip.unpinned", "clip.deleted",
-  "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted",
+  "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted", "clip.ocrUpdated",
   "clip.captureDeduplicated",
   "snippet.created", "snippet.updated", "snippet.deleted",
   "settings.updated",

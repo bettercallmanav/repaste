@@ -18,6 +18,11 @@
       "from": "build",
       "to": "build",
       "filter": ["**/*.png", "**/*.ico", "**/*.icns"]
+    },
+    {
+      "from": "build/bin",
+      "to": "bin",
+      "filter": ["vision-ocr"]
     }
   ],
   "mac": {

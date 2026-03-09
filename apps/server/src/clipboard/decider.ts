@@ -17,6 +17,24 @@ const nowIso = () => new Date().toISOString();
 
 type EventBase = Omit<ClipboardEvent, "sequence">;
 
+function isDuplicateCapture(
+  latest: ClipboardReadModel["clips"][number],
+  command: Extract<ClipboardCommand, { type: "clip.capture" }>,
+): boolean {
+  if (latest.deletedAt !== null || latest.contentType !== command.contentType) {
+    return false;
+  }
+
+  if (command.contentType === "image") {
+    return latest.imageAssetId !== null &&
+      command.imageAssetId !== undefined &&
+      command.imageAssetId !== null &&
+      latest.imageAssetId === command.imageAssetId;
+  }
+
+  return latest.content === command.content;
+}
+
 function withEventBase(input: {
   readonly commandId: string;
   readonly aggregateKind: ClipboardEvent["aggregateKind"];
@@ -52,7 +70,7 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
       // Dedup: if identical content was just captured, silently accept
       if (readModel.settings.deduplicateConsecutive) {
         const latest = readModel.clips[0];
-        if (latest && latest.content === command.content && latest.deletedAt === null) {
+        if (latest && isDuplicateCapture(latest, command)) {
           const deduplicatedEvent: EventBase = {
             ...withEventBase({
               aggregateKind: "clip",
@@ -255,6 +273,43 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           preview,
           metadata,
           capturedAt: command.capturedAt,
+        },
+      };
+    }
+
+    case "clip.updateOcr": {
+      const clip = yield* requireClip({ readModel, command, clipId: command.clipId });
+      const normalizedOcrText = command.ocrText.trim();
+      if (clip.contentType !== "image") {
+        return yield* new ClipboardCommandInvariantError({
+          commandType: command.type,
+          detail: `Clip '${command.clipId}' is not an image clip.`,
+        });
+      }
+      if (normalizedOcrText.length === 0) {
+        return yield* new ClipboardCommandInvariantError({
+          commandType: command.type,
+          detail: `Clip '${command.clipId}' OCR text is empty.`,
+        });
+      }
+      if (clip.ocrText === normalizedOcrText) {
+        return yield* new ClipboardCommandInvariantError({
+          commandType: command.type,
+          detail: `Clip '${command.clipId}' already has the same OCR text.`,
+        });
+      }
+      return {
+        ...withEventBase({
+          aggregateKind: "clip",
+          aggregateId: command.clipId,
+          occurredAt: command.updatedAt,
+          commandId: command.commandId,
+        }),
+        type: "clip.ocrUpdated",
+        payload: {
+          clipId: command.clipId,
+          ocrText: normalizedOcrText,
+          updatedAt: command.updatedAt,
         },
       };
     }

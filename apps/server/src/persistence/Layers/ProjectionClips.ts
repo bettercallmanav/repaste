@@ -14,6 +14,7 @@ import {
 const IdInput = Schema.Struct({ id: ClipId });
 const PinInput = Schema.Struct({ id: ClipId, pinned: Schema.Number });
 const TagsInput = Schema.Struct({ id: ClipId, tagsJson: Schema.String });
+const OcrTextInput = Schema.Struct({ id: ClipId, ocrText: Schema.String });
 const SoftDeleteInput = Schema.Struct({ id: ClipId, deletedAt: Schema.String });
 type SearchFilters = Exclude<SearchInput["filters"], undefined>;
 
@@ -168,6 +169,25 @@ const makeProjectionClipRepository = Effect.gen(function* () {
         LIMIT ${limit}
       `,
   });
+
+  const resyncFtsById = (id: typeof ClipId.Type) =>
+    getByIdRow({ id }).pipe(
+      Effect.flatMap((row) => {
+        if (row._tag === "None") {
+          return sql`DELETE FROM clips_fts WHERE id = ${id}`.pipe(Effect.asVoid);
+        }
+
+        return upsertFts(
+          row.value.id,
+          row.value.content,
+          row.value.preview,
+          row.value.category,
+          toFtsTagDocument(row.value.tagsJson),
+          row.value.sourceApp,
+          row.value.ocrText,
+        );
+      }),
+    );
 
   const searchRows = SqlSchema.findAll({
     Request: SearchInput,
@@ -346,23 +366,18 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       execute: (r) =>
         sql`UPDATE projection_clips SET tags_json = ${r.tagsJson} WHERE id = ${r.id}`,
     })({ id, tagsJson }).pipe(
-      Effect.flatMap(() => getByIdRow({ id })),
-      Effect.flatMap((row) => {
-        if (row._tag === "None") {
-          return sql`DELETE FROM clips_fts WHERE id = ${id}`.pipe(Effect.asVoid);
-        }
-
-        return upsertFts(
-          row.value.id,
-          row.value.content,
-          row.value.preview,
-          row.value.category,
-          toFtsTagDocument(row.value.tagsJson),
-          row.value.sourceApp,
-          row.value.ocrText,
-        );
-      }),
+      Effect.flatMap(() => resyncFtsById(id)),
       Effect.mapError(toPersistenceSqlError("ProjectionClips.updateTags")),
+    );
+
+  const updateOcrText: ProjectionClipRepositoryShape["updateOcrText"] = (id, ocrText) =>
+    SqlSchema.void({
+      Request: OcrTextInput,
+      execute: (r) =>
+        sql`UPDATE projection_clips SET ocr_text = ${r.ocrText} WHERE id = ${r.id}`,
+    })({ id, ocrText }).pipe(
+      Effect.flatMap(() => resyncFtsById(id)),
+      Effect.mapError(toPersistenceSqlError("ProjectionClips.updateOcrText")),
     );
 
   const incrementPasteCount: ProjectionClipRepositoryShape["incrementPasteCount"] = (id) =>
@@ -389,6 +404,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     search,
     updatePinned,
     updateTags,
+    updateOcrText,
     incrementPasteCount,
     softDelete,
   } satisfies ProjectionClipRepositoryShape;

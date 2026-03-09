@@ -7,6 +7,7 @@ import {
   ClipUntaggedPayload as ContractsClipUntaggedPayload,
   ClipMergedPayload as ContractsClipMergedPayload,
   ClipPastedPayload as ContractsClipPastedPayload,
+  ClipOcrUpdatedPayload as ContractsClipOcrUpdatedPayload,
   SnippetCreatedPayload as ContractsSnippetCreatedPayload,
   SnippetUpdatedPayload as ContractsSnippetUpdatedPayload,
   SnippetDeletedPayload as ContractsSnippetDeletedPayload,
@@ -22,6 +23,7 @@ export const ClipTaggedPayload = ContractsClipTaggedPayload;
 export const ClipUntaggedPayload = ContractsClipUntaggedPayload;
 export const ClipMergedPayload = ContractsClipMergedPayload;
 export const ClipPastedPayload = ContractsClipPastedPayload;
+export const ClipOcrUpdatedPayload = ContractsClipOcrUpdatedPayload;
 export const SnippetCreatedPayload = ContractsSnippetCreatedPayload;
 export const SnippetUpdatedPayload = ContractsSnippetUpdatedPayload;
 export const SnippetDeletedPayload = ContractsSnippetDeletedPayload;

@@ -12,6 +12,7 @@ import {
   ClipUntaggedPayload,
   ClipMergedPayload,
   ClipPastedPayload,
+  ClipOcrUpdatedPayload,
   SnippetCreatedPayload,
   SnippetUpdatedPayload,
   SnippetDeletedPayload,
@@ -229,6 +230,14 @@ export function projectEvent(
             },
           };
         }),
+      );
+
+    case "clip.ocrUpdated":
+      return decodeForEvent(ClipOcrUpdatedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((p) => ({
+          ...nextBase,
+          clips: updateClip(nextBase.clips, p.clipId, { ocrText: p.ocrText }),
+        })),
       );
 
     case "snippet.created":

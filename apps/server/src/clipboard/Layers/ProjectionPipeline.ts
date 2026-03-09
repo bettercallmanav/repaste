@@ -121,6 +121,10 @@ const makeProjectionPipeline = Effect.gen(function* () {
         const p = event.payload as any;
         return clipRepo.incrementPasteCount(p.clipId);
       }
+      case "clip.ocrUpdated": {
+        const p = event.payload as any;
+        return clipRepo.updateOcrText(p.clipId, p.ocrText);
+      }
       default:
         return Effect.void;
     }

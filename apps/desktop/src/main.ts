@@ -15,6 +15,7 @@ import { WindowManager } from "./windowManager.ts";
 import { TrayManager } from "./trayManager.ts";
 import { ShortcutManager } from "./shortcutManager.ts";
 import { ClipboardMonitor } from "./clipboardMonitor.ts";
+import { createOcrProvider } from "./ocr/createOcrProvider.ts";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,9 @@ const WEB_DIST_PATH = app.isPackaged
 const BUILD_RESOURCES_PATH = app.isPackaged
   ? path.join(process.resourcesPath, "build")
   : path.resolve(__dirname, "../build");
+const OCR_HELPER_PATH = app.isPackaged
+  ? path.join(process.resourcesPath, "bin", "vision-ocr")
+  : path.resolve(__dirname, "../build/bin/vision-ocr");
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +54,7 @@ const windowManager = new WindowManager();
 const trayManager = new TrayManager();
 const shortcutManager = new ShortcutManager();
 const clipboardMonitor = new ClipboardMonitor();
+const ocrProvider = createOcrProvider({ helperPath: OCR_HELPER_PATH });
 
 let serverWs: WebSocket | null = null;
 let isQuitting = false;
@@ -182,7 +187,7 @@ function connectToServer(): void {
   serverWs.on("open", () => {
     console.log("Connected to server via WebSocket");
     // Start clipboard monitoring once connected
-    clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR });
+    clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR, ocrProvider });
     refreshTrayRecentClips();
   });
 
