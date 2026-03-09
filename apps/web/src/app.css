@@ -243,6 +243,17 @@ body {
     border-color: var(--border-color);
   }
 
+  .ui-highlight {
+    background-color: rgba(251, 191, 36, 0.32);
+    color: inherit;
+  }
+
+  .ui-search-note {
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-muted);
+    color: var(--text-secondary);
+  }
+
   .ui-suggestions {
     border: 1px solid var(--border-color);
     background-color: var(--surface);

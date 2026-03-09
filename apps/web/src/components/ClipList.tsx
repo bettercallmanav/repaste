@@ -4,7 +4,14 @@ import { ClipCard } from "./ClipCard.tsx";
 import { Clipboard } from "lucide-react";
 
 export function ClipList() {
-  const { clips, searchResults, selectedClipId, selectedClipIds, loading } = useClipboardStore();
+  const {
+    clips,
+    searchResults,
+    selectedClipId,
+    selectedClipIds,
+    loading,
+    searchLoading,
+  } = useClipboardStore();
   const displayClips = searchResults ?? clips;
 
   if (loading) {
@@ -15,12 +22,25 @@ export function ClipList() {
     );
   }
 
+  if (searchLoading && searchResults === null) {
+    return (
+      <div className="ui-empty flex flex-1 flex-col items-center justify-center gap-3">
+        <Clipboard className="size-12 opacity-30" />
+        <p className="text-sm">Searching clips...</p>
+      </div>
+    );
+  }
+
   if (displayClips.length === 0) {
     return (
       <div className="ui-empty flex flex-1 flex-col items-center justify-center gap-3">
         <Clipboard className="size-12 opacity-30" />
         <p className="text-sm">
-          {searchResults ? "No clips match your search filters" : "No clips yet"}
+          {searchLoading
+            ? "Searching clips..."
+            : searchResults
+              ? "No clips match your search filters"
+              : "No clips yet"}
         </p>
       </div>
     );

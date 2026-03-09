@@ -1,6 +1,7 @@
 import { Pin, Trash2, Copy, Tag, Image } from "lucide-react";
 import type { Clip } from "@clipm/contracts";
 import { useClipboardStore } from "../store.ts";
+import { getClipSearchMatchMeta, getSearchSnippet, HighlightText } from "./SearchHighlight.tsx";
 
 const CONTENT_TYPE_COLORS: Record<string, string> = {
   url: "text-blue-400",
@@ -45,9 +46,22 @@ function getImageDisplaySrc(clip: Clip): string | null {
 }
 
 export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
-  const { copyClip, selectClip, pinClip, unpinClip, deleteClip, pasteClip, toggleClipSelection } = useClipboardStore();
+  const {
+    copyClip,
+    selectClip,
+    pinClip,
+    unpinClip,
+    deleteClip,
+    pasteClip,
+    toggleClipSelection,
+    searchResolvedQuery,
+  } = useClipboardStore();
   const colorClass = CONTENT_TYPE_COLORS[clip.contentType] ?? "ui-text-muted";
   const imageDisplaySrc = clip.contentType === "image" ? getImageDisplaySrc(clip) : null;
+  const matchMeta = getClipSearchMatchMeta(clip, searchResolvedQuery);
+  const contentPreview = searchResolvedQuery.trim().length > 0
+    ? getSearchSnippet(clip.content, searchResolvedQuery, 200)
+    : truncate(clip.content, 200);
 
   return (
     <div
@@ -83,17 +97,29 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
 
             {/* Image preview or text */}
             {clip.contentType === "image" && imageDisplaySrc ? (
-              <div className="mt-1 flex items-center gap-2">
-                <Image className="size-4 text-rose-400 shrink-0" />
-                <img
-                  src={imageDisplaySrc}
-                  alt="Clipboard image"
-                  className="ui-image-frame max-h-16 max-w-[120px] rounded border object-contain"
-                />
-                {(clip.imageWidth && clip.imageHeight) && (
-                  <span className="ui-text-muted text-xs">
-                    {clip.imageWidth}x{clip.imageHeight}
-                  </span>
+              <div className="mt-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Image className="size-4 text-rose-400 shrink-0" />
+                  <img
+                    src={imageDisplaySrc}
+                    alt="Clipboard image"
+                    className="ui-image-frame max-h-16 max-w-[120px] rounded border object-contain"
+                  />
+                  {(clip.imageWidth && clip.imageHeight) && (
+                    <span className="ui-text-muted text-xs">
+                      {clip.imageWidth}x{clip.imageHeight}
+                    </span>
+                  )}
+                </div>
+                {matchMeta.ocrOnlyMatch && matchMeta.ocrSnippet && (
+                  <div className="ui-search-note rounded-md px-2 py-1 text-xs leading-relaxed">
+                    <p className="ui-text-muted text-[11px] font-medium uppercase tracking-[0.08em]">
+                      Matched in image text
+                    </p>
+                    <p className="mt-1">
+                      <HighlightText text={matchMeta.ocrSnippet} query={searchResolvedQuery} />
+                    </p>
+                  </div>
                 )}
               </div>
             ) : clip.contentType === "color" ? (
@@ -102,11 +128,13 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
                   className="ui-divider size-4 rounded border"
                   style={{ backgroundColor: clip.content.trim() }}
                 />
-                <span className="ui-text-primary text-sm font-mono">{clip.content.trim()}</span>
+                <span className="ui-text-primary text-sm font-mono">
+                  <HighlightText text={clip.content.trim()} query={searchResolvedQuery} />
+                </span>
               </div>
             ) : (
               <p className="ui-text-primary mt-1 break-all text-sm leading-relaxed">
-                {truncate(clip.content, 200)}
+                <HighlightText text={contentPreview} query={searchResolvedQuery} />
               </p>
             )}
 
@@ -118,7 +146,7 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
                     className="ui-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                   >
                     <Tag className="size-2.5" />
-                    {tag}
+                    <HighlightText text={tag} query={searchResolvedQuery} />
                   </span>
                 ))}
               </div>

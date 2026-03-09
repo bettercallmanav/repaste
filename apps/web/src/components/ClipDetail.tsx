@@ -2,6 +2,7 @@ import { Copy, Pin, Trash2, X } from "lucide-react";
 import type { Clip } from "@clipm/contracts";
 import { useClipboardStore } from "../store.ts";
 import { TagInput } from "./TagInput.tsx";
+import { getClipSearchMatchMeta, HighlightText } from "./SearchHighlight.tsx";
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
@@ -19,12 +20,13 @@ function getImageDisplaySrc(clip: Clip): string | null {
 }
 
 export function ClipDetail() {
-  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip } =
+  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip, searchResolvedQuery } =
     useClipboardStore();
 
   const clip = clips.find((c: Clip) => c.id === selectedClipId);
   if (!clip) return null;
   const imageDisplaySrc = clip.contentType === "image" ? getImageDisplaySrc(clip) : null;
+  const matchMeta = getClipSearchMatchMeta(clip, searchResolvedQuery);
 
   return (
     <div className="ui-divider ui-panel-tint flex h-full flex-col border-l">
@@ -42,14 +44,21 @@ export function ClipDetail() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {clip.contentType === "image" && imageDisplaySrc ? (
-          <img
-            src={imageDisplaySrc}
-            alt="Clipboard image"
-            className="ui-image-frame max-w-full rounded-lg border"
-          />
+          <div className="space-y-3">
+            <img
+              src={imageDisplaySrc}
+              alt="Clipboard image"
+              className="ui-image-frame max-w-full rounded-lg border"
+            />
+            {matchMeta.ocrOnlyMatch && (
+              <div className="ui-search-note rounded-lg px-3 py-2 text-sm">
+                Matched via OCR text in this image.
+              </div>
+            )}
+          </div>
         ) : (
           <pre className="ui-pre whitespace-pre-wrap break-all rounded-lg p-3 text-sm font-mono leading-relaxed">
-            {clip.content}
+            <HighlightText text={clip.content} query={searchResolvedQuery} />
           </pre>
         )}
 
@@ -79,7 +88,7 @@ export function ClipDetail() {
           <div className="mt-4">
             <h3 className="ui-text-muted text-xs font-medium">OCR Text</h3>
             <pre className="ui-pre mt-1 whitespace-pre-wrap break-all rounded-lg p-3 text-xs font-mono leading-relaxed">
-              {clip.ocrText}
+              <HighlightText text={clip.ocrText} query={searchResolvedQuery} />
             </pre>
           </div>
         )}

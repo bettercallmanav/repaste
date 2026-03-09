@@ -51,6 +51,8 @@ interface ClipboardStore {
   searchQuery: string;
   searchFilters: ClipSearchFilters;
   searchResults: readonly Clip[] | null;
+  searchResolvedQuery: string;
+  searchLoading: boolean;
   selectedClipId: string | null;
   selectedClipIds: readonly string[];
   activeView: ActiveView;
@@ -138,7 +140,7 @@ async function runSearch(
 ): Promise<void> {
   if (!hasActiveSearch(query, filters)) {
     latestSearchRequestId++;
-    set({ searchResults: null });
+    set({ searchResults: null, searchResolvedQuery: "", searchLoading: false });
     return;
   }
 
@@ -146,14 +148,16 @@ async function runSearch(
   const normalizedFilters = normalizeSearchFilters(filters);
   const requestId = ++latestSearchRequestId;
   const requestKey = getSearchRequestKey(normalizedQuery, normalizedFilters);
+  set({ searchLoading: true, searchResolvedQuery: "" });
 
   try {
     const { clips } = await api.search(normalizedQuery, normalizedFilters);
     if (requestId !== latestSearchRequestId) return;
     if (getSearchRequestKey(get().searchQuery, get().searchFilters) !== requestKey) return;
-    set({ searchResults: clips });
+    set({ searchResults: clips, searchResolvedQuery: normalizedQuery, searchLoading: false });
   } catch (err) {
     if (requestId === latestSearchRequestId) {
+      set({ searchLoading: false, searchResolvedQuery: "" });
       console.error("Search failed", err);
     }
   }
@@ -180,6 +184,8 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   searchQuery: "",
   searchFilters: {},
   searchResults: null,
+  searchResolvedQuery: "",
+  searchLoading: false,
   selectedClipId: null,
   selectedClipIds: [],
   activeView: "clips",
@@ -222,7 +228,13 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
 
   clearSearch: () => {
     latestSearchRequestId++;
-    set({ searchQuery: "", searchFilters: {}, searchResults: null });
+    set({
+      searchQuery: "",
+      searchFilters: {},
+      searchResults: null,
+      searchResolvedQuery: "",
+      searchLoading: false,
+    });
   },
 
   selectClip: (id) => set({ selectedClipId: id }),
