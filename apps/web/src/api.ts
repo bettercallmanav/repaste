@@ -1,4 +1,5 @@
 import type {
+  ClipSearchFilters,
   ClipboardCommand,
   ClipboardReadModel,
   Clip,
@@ -14,8 +15,8 @@ export const api = {
   dispatch: (command: ClipboardCommand) =>
     transport.request<{ sequence: number }>("clipboard.dispatchCommand", { command }),
 
-  search: (query: string) =>
-    transport.request<{ clips: Clip[] }>("clipboard.search", { query }),
+  search: (query: string, filters?: ClipSearchFilters) =>
+    transport.request<{ clips: Clip[] }>("clipboard.search", { query, filters }),
 
   subscribe: transport.subscribe.bind(transport),
 };

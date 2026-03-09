@@ -97,7 +97,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* engine.dispatch(body.command);
 
       case "clipboard.search":
-        return yield* search.search(body.query, 50).pipe(Effect.map((clips) => ({ clips })));
+        return yield* search.search({
+          query: body.query,
+          filters: body.filters,
+          limit: 50,
+        }).pipe(Effect.map((clips) => ({ clips })));
     }
   });
 

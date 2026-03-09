@@ -1,5 +1,15 @@
 import { Schema } from "effect";
-import { ClipboardCommand, ClipboardEvent, ClipboardReadModel } from "./clipboard.ts";
+import { ClipboardCommand, ClipboardEvent, ClipboardReadModel, ContentType } from "./clipboard.ts";
+
+export const ClipSearchFilters = Schema.Struct({
+  contentType: Schema.optional(ContentType),
+  pinned: Schema.optional(Schema.Boolean),
+  tag: Schema.optional(Schema.String),
+  sourceApp: Schema.optional(Schema.String),
+  dateFrom: Schema.optional(Schema.String),
+  dateTo: Schema.optional(Schema.String),
+});
+export type ClipSearchFilters = typeof ClipSearchFilters.Type;
 
 // ─── WebSocket Request/Response Protocol ─────────────────────────────────────
 
@@ -10,13 +20,7 @@ export const WsRequestBody = Schema.Union([
   }),
   Schema.TaggedStruct("clipboard.search", {
     query: Schema.String,
-    filters: Schema.optional(
-      Schema.Struct({
-        contentType: Schema.optional(Schema.String),
-        pinned: Schema.optional(Schema.Boolean),
-        tag: Schema.optional(Schema.String),
-      }),
-    ),
+    filters: Schema.optional(ClipSearchFilters),
   }),
 ]);
 export type WsRequestBody = typeof WsRequestBody.Type;

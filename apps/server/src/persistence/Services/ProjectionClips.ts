@@ -1,6 +1,6 @@
 import { Schema, ServiceMap } from "effect";
 import type { Effect, Option } from "effect";
-import { ClipId, IsoDateTime, NonNegativeInt } from "@clipm/contracts";
+import { ClipId, ClipSearchFilters, IsoDateTime, NonNegativeInt } from "@clipm/contracts";
 import type { ProjectionRepositoryError } from "../Errors.ts";
 
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
@@ -24,6 +24,7 @@ export type ProjectionClipRow = typeof ProjectionClipRow.Type;
 
 export const SearchInput = Schema.Struct({
   query: Schema.String,
+  filters: Schema.optional(ClipSearchFilters),
   limit: Schema.Number,
 });
 export type SearchInput = typeof SearchInput.Type;

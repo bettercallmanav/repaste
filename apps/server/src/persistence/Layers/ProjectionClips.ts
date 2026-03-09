@@ -15,6 +15,7 @@ const IdInput = Schema.Struct({ id: ClipId });
 const PinInput = Schema.Struct({ id: ClipId, pinned: Schema.Number });
 const TagsInput = Schema.Struct({ id: ClipId, tagsJson: Schema.String });
 const SoftDeleteInput = Schema.Struct({ id: ClipId, deletedAt: Schema.String });
+type SearchFilters = Exclude<SearchInput["filters"], undefined>;
 
 function toFtsMatchQuery(query: string): string {
   return query
@@ -23,6 +24,25 @@ function toFtsMatchQuery(query: string): string {
     .filter((token) => token.length > 0)
     .map((token) => `"${token.replace(/"/g, "\"\"")}"`)
     .join(" ");
+}
+
+function normalizeSearchFilters(filters: SearchInput["filters"]): SearchFilters | undefined {
+  if (!filters) return undefined;
+
+  const tag = filters.tag?.trim();
+  const sourceApp = filters.sourceApp?.trim();
+  const dateFrom = filters.dateFrom?.trim();
+  const dateTo = filters.dateTo?.trim();
+  const normalized: SearchFilters = {
+    ...(filters.contentType !== undefined ? { contentType: filters.contentType } : {}),
+    ...(filters.pinned !== undefined ? { pinned: filters.pinned } : {}),
+    ...(tag && tag.length > 0 ? { tag } : {}),
+    ...(sourceApp && sourceApp.length > 0 ? { sourceApp } : {}),
+    ...(dateFrom && dateFrom.length > 0 ? { dateFrom } : {}),
+    ...(dateTo && dateTo.length > 0 ? { dateTo } : {}),
+  };
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 const makeProjectionClipRepository = Effect.gen(function* () {
@@ -100,8 +120,20 @@ const makeProjectionClipRepository = Effect.gen(function* () {
   const searchRows = SqlSchema.findAll({
     Request: SearchInput,
     Result: ProjectionClipRow,
-    execute: ({ query, limit }) =>
-      sql`
+    execute: ({ query, filters, limit }) => {
+      const normalizedFilters = normalizeSearchFilters(filters);
+      const contentType = normalizedFilters?.contentType ?? null;
+      const pinned = normalizedFilters?.pinned === undefined
+        ? null
+        : normalizedFilters.pinned
+          ? 1
+          : 0;
+      const tag = normalizedFilters?.tag ?? null;
+      const sourceApp = normalizedFilters?.sourceApp ?? null;
+      const dateFrom = normalizedFilters?.dateFrom ?? null;
+      const dateTo = normalizedFilters?.dateTo ?? null;
+
+      return sql`
         SELECT c.id, c.content, c.content_type AS "contentType", c.preview,
                c.image_data_url AS "imageDataUrl", c.pinned,
                c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
@@ -111,9 +143,60 @@ const makeProjectionClipRepository = Effect.gen(function* () {
         JOIN projection_clips c ON c.id = f.id
         WHERE clips_fts MATCH ${query}
           AND c.deleted_at IS NULL
-        ORDER BY rank
+          AND (${contentType} IS NULL OR c.content_type = ${contentType})
+          AND (${pinned} IS NULL OR c.pinned = ${pinned})
+          AND (${tag} IS NULL OR EXISTS (
+            SELECT 1
+            FROM json_each(c.tags_json) tags
+            WHERE tags.value = ${tag}
+          ))
+          AND (${sourceApp} IS NULL OR c.source_app = ${sourceApp})
+          AND (${dateFrom} IS NULL OR date(c.captured_at) >= date(${dateFrom}))
+          AND (${dateTo} IS NULL OR date(c.captured_at) <= date(${dateTo}))
+        ORDER BY c.pinned DESC, rank, c.paste_count DESC, c.captured_at DESC
         LIMIT ${limit}
-      `,
+      `;
+    },
+  });
+
+  const filteredRows = SqlSchema.findAll({
+    Request: SearchInput,
+    Result: ProjectionClipRow,
+    execute: ({ filters, limit }) => {
+      const normalizedFilters = normalizeSearchFilters(filters);
+      const contentType = normalizedFilters?.contentType ?? null;
+      const pinned = normalizedFilters?.pinned === undefined
+        ? null
+        : normalizedFilters.pinned
+          ? 1
+          : 0;
+      const tag = normalizedFilters?.tag ?? null;
+      const sourceApp = normalizedFilters?.sourceApp ?? null;
+      const dateFrom = normalizedFilters?.dateFrom ?? null;
+      const dateTo = normalizedFilters?.dateTo ?? null;
+
+      return sql`
+        SELECT c.id, c.content, c.content_type AS "contentType", c.preview,
+               c.image_data_url AS "imageDataUrl", c.pinned,
+               c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
+               c.paste_count AS "pasteCount", c.captured_at AS "capturedAt",
+               c.deleted_at AS "deletedAt", c.metadata_json AS "metadataJson"
+        FROM projection_clips c
+        WHERE c.deleted_at IS NULL
+          AND (${contentType} IS NULL OR c.content_type = ${contentType})
+          AND (${pinned} IS NULL OR c.pinned = ${pinned})
+          AND (${tag} IS NULL OR EXISTS (
+            SELECT 1
+            FROM json_each(c.tags_json) tags
+            WHERE tags.value = ${tag}
+          ))
+          AND (${sourceApp} IS NULL OR c.source_app = ${sourceApp})
+          AND (${dateFrom} IS NULL OR date(c.captured_at) >= date(${dateFrom}))
+          AND (${dateTo} IS NULL OR date(c.captured_at) <= date(${dateTo}))
+        ORDER BY c.pinned DESC, c.paste_count DESC, c.captured_at DESC
+        LIMIT ${limit}
+      `;
+    },
   });
 
   const upsert: ProjectionClipRepositoryShape["upsert"] = (row) =>
@@ -137,11 +220,16 @@ const makeProjectionClipRepository = Effect.gen(function* () {
 
   const search: ProjectionClipRepositoryShape["search"] = (input) => {
     const query = toFtsMatchQuery(input.query);
+    const filters = normalizeSearchFilters(input.filters);
+    const normalizedInput: SearchInput = { ...input, query, filters };
+
     if (query.length === 0) {
-      return Effect.succeed([]);
+      return filteredRows(normalizedInput).pipe(
+        Effect.mapError(toPersistenceSqlError("ProjectionClips.searchFiltered")),
+      );
     }
 
-    return searchRows({ ...input, query }).pipe(
+    return searchRows(normalizedInput).pipe(
       Effect.mapError(toPersistenceSqlError("ProjectionClips.search")),
     );
   };

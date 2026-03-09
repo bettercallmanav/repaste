@@ -31,8 +31,8 @@ function rowToClip(row: ProjectionClipRow): Clip {
 const makeSearchService = Effect.gen(function* () {
   const clipRepo = yield* ProjectionClipRepository;
 
-  const search: SearchServiceShape["search"] = (query, limit = 50) =>
-    clipRepo.search({ query, limit }).pipe(
+  const search: SearchServiceShape["search"] = ({ query, filters, limit = 50 }) =>
+    clipRepo.search({ query, filters, limit }).pipe(
       Effect.map((rows) => rows.map(rowToClip)),
     );
 

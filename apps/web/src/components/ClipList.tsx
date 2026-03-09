@@ -20,7 +20,7 @@ export function ClipList() {
       <div className="ui-empty flex flex-1 flex-col items-center justify-center gap-3">
         <Clipboard className="size-12 opacity-30" />
         <p className="text-sm">
-          {searchResults ? "No clips match your search" : "No clips yet"}
+          {searchResults ? "No clips match your search filters" : "No clips yet"}
         </p>
       </div>
     );

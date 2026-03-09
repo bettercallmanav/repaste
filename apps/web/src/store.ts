@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Clip, ClipboardCommand, Snippet } from "@clipm/contracts";
+import type { Clip, ClipSearchFilters, ClipboardCommand, Snippet } from "@clipm/contracts";
 import { WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { api } from "./api.ts";
@@ -14,12 +14,42 @@ type DesktopWindow = Window & {
   desktopBridge?: ClipboardDesktopBridge;
 };
 
+function normalizeSearchFilters(filters: ClipSearchFilters | undefined): ClipSearchFilters {
+  if (!filters) return {};
+
+  const tag = filters.tag?.trim();
+  const sourceApp = filters.sourceApp?.trim();
+  const dateFrom = filters.dateFrom?.trim();
+  const dateTo = filters.dateTo?.trim();
+
+  return {
+    ...(filters.contentType !== undefined ? { contentType: filters.contentType } : {}),
+    ...(filters.pinned !== undefined ? { pinned: filters.pinned } : {}),
+    ...(tag && tag.length > 0 ? { tag } : {}),
+    ...(sourceApp && sourceApp.length > 0 ? { sourceApp } : {}),
+    ...(dateFrom && dateFrom.length > 0 ? { dateFrom } : {}),
+    ...(dateTo && dateTo.length > 0 ? { dateTo } : {}),
+  };
+}
+
+function hasActiveSearch(query: string, filters: ClipSearchFilters | undefined): boolean {
+  return query.trim().length > 0 || Object.keys(normalizeSearchFilters(filters)).length > 0;
+}
+
+function getSearchRequestKey(query: string, filters: ClipSearchFilters | undefined): string {
+  return JSON.stringify({
+    query: query.trim(),
+    filters: normalizeSearchFilters(filters),
+  });
+}
+
 interface ClipboardStore {
   // State
   clips: readonly Clip[];
   snippets: readonly Snippet[];
   knownTags: readonly string[];
   searchQuery: string;
+  searchFilters: ClipSearchFilters;
   searchResults: readonly Clip[] | null;
   selectedClipId: string | null;
   selectedClipIds: readonly string[];
@@ -29,7 +59,8 @@ interface ClipboardStore {
   // Actions
   init: () => Promise<void>;
   setSearchQuery: (query: string) => void;
-  search: (query: string) => Promise<void>;
+  setSearchFilters: (filters: Partial<ClipSearchFilters>) => void;
+  search: (query?: string, filters?: ClipSearchFilters) => Promise<void>;
   clearSearch: () => void;
   selectClip: (id: string | null) => void;
   toggleClipSelection: (id: string) => void;
@@ -93,22 +124,25 @@ async function writeClipToClipboard(clip: Clip): Promise<void> {
 
 async function runSearch(
   query: string,
+  filters: ClipSearchFilters,
   set: (state: Partial<ClipboardStore>) => void,
   get: () => ClipboardStore,
 ): Promise<void> {
-  const normalizedQuery = query.trim();
-  if (normalizedQuery.length === 0) {
+  if (!hasActiveSearch(query, filters)) {
     latestSearchRequestId++;
     set({ searchResults: null });
     return;
   }
 
+  const normalizedQuery = query.trim();
+  const normalizedFilters = normalizeSearchFilters(filters);
   const requestId = ++latestSearchRequestId;
+  const requestKey = getSearchRequestKey(normalizedQuery, normalizedFilters);
 
   try {
-    const { clips } = await api.search(normalizedQuery);
+    const { clips } = await api.search(normalizedQuery, normalizedFilters);
     if (requestId !== latestSearchRequestId) return;
-    if (get().searchQuery.trim() !== normalizedQuery) return;
+    if (getSearchRequestKey(get().searchQuery, get().searchFilters) !== requestKey) return;
     set({ searchResults: clips });
   } catch (err) {
     if (requestId === latestSearchRequestId) {
@@ -128,7 +162,7 @@ async function refreshSnapshot(
     knownTags: snapshot.knownTags,
   });
 
-  await runSearch(get().searchQuery, set, get);
+  await runSearch(get().searchQuery, get().searchFilters, set, get);
 }
 
 export const useClipboardStore = create<ClipboardStore>((set, get) => ({
@@ -136,6 +170,7 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   snippets: [],
   knownTags: [],
   searchQuery: "",
+  searchFilters: {},
   searchResults: null,
   selectedClipId: null,
   selectedClipIds: [],
@@ -166,11 +201,20 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  search: async (query) => runSearch(query, set, get),
+  setSearchFilters: (filters) =>
+    set((state) => ({
+      searchFilters: {
+        ...state.searchFilters,
+        ...filters,
+      },
+    })),
+
+  search: async (query = get().searchQuery, filters = get().searchFilters) =>
+    runSearch(query, filters, set, get),
 
   clearSearch: () => {
     latestSearchRequestId++;
-    set({ searchQuery: "", searchResults: null });
+    set({ searchQuery: "", searchFilters: {}, searchResults: null });
   },
 
   selectClip: (id) => set({ selectedClipId: id }),
