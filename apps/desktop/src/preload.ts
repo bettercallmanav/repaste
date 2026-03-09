@@ -9,6 +9,8 @@ const bridge: ClipboardDesktopBridge = {
 
   writeImageDataUrl: (dataUrl: string) => ipcRenderer.invoke(IPC_CHANNELS.writeImageDataUrl, dataUrl),
 
+  writeImageFile: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.writeImageFile, path),
+
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
 
   showContextMenu: (items: readonly ContextMenuItem[]) =>

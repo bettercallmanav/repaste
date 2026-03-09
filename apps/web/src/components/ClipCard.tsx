@@ -38,9 +38,16 @@ interface ClipCardProps {
   multiSelected: boolean;
 }
 
+function getImageDisplaySrc(clip: Clip): string | null {
+  if (clip.imageDataUrl) return clip.imageDataUrl;
+  if (clip.imageAssetPath) return encodeURI(`file://${clip.imageAssetPath}`);
+  return null;
+}
+
 export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
   const { copyClip, selectClip, pinClip, unpinClip, deleteClip, pasteClip, toggleClipSelection } = useClipboardStore();
   const colorClass = CONTENT_TYPE_COLORS[clip.contentType] ?? "ui-text-muted";
+  const imageDisplaySrc = clip.contentType === "image" ? getImageDisplaySrc(clip) : null;
 
   return (
     <div
@@ -75,14 +82,19 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
             </div>
 
             {/* Image preview or text */}
-            {clip.contentType === "image" && clip.imageDataUrl ? (
+            {clip.contentType === "image" && imageDisplaySrc ? (
               <div className="mt-1 flex items-center gap-2">
                 <Image className="size-4 text-rose-400 shrink-0" />
                 <img
-                  src={clip.imageDataUrl}
+                  src={imageDisplaySrc}
                   alt="Clipboard image"
                   className="ui-image-frame max-h-16 max-w-[120px] rounded border object-contain"
                 />
+                {(clip.imageWidth && clip.imageHeight) && (
+                  <span className="ui-text-muted text-xs">
+                    {clip.imageWidth}x{clip.imageHeight}
+                  </span>
+                )}
               </div>
             ) : clip.contentType === "color" ? (
               <div className="mt-1 flex items-center gap-2">

@@ -45,6 +45,25 @@ function normalizeSearchFilters(filters: SearchInput["filters"]): SearchFilters 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
+function toFtsTagDocument(tagsJson: unknown): string {
+  if (Array.isArray(tagsJson)) {
+    return tagsJson.filter((tag): tag is string => typeof tag === "string").join(" ");
+  }
+
+  if (typeof tagsJson === "string") {
+    try {
+      const parsed = JSON.parse(tagsJson) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((tag): tag is string => typeof tag === "string").join(" ");
+      }
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
 const makeProjectionClipRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
@@ -54,11 +73,13 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       sql`
         INSERT INTO projection_clips (
           id, content, content_type, preview, image_data_url,
+          image_asset_id, image_asset_path, image_width, image_height, image_mime_type, ocr_text,
           pinned, tags_json, category, source_app,
           paste_count, captured_at, deleted_at, metadata_json
         )
         VALUES (
           ${r.id}, ${r.content}, ${r.contentType}, ${r.preview}, ${r.imageDataUrl},
+          ${r.imageAssetId}, ${r.imageAssetPath}, ${r.imageWidth}, ${r.imageHeight}, ${r.imageMimeType}, ${r.ocrText},
           ${r.pinned}, ${r.tagsJson}, ${r.category}, ${r.sourceApp},
           ${r.pasteCount}, ${r.capturedAt}, ${r.deletedAt}, ${r.metadataJson}
         )
@@ -68,6 +89,12 @@ const makeProjectionClipRepository = Effect.gen(function* () {
           content_type = excluded.content_type,
           preview = excluded.preview,
           image_data_url = excluded.image_data_url,
+          image_asset_id = excluded.image_asset_id,
+          image_asset_path = excluded.image_asset_path,
+          image_width = excluded.image_width,
+          image_height = excluded.image_height,
+          image_mime_type = excluded.image_mime_type,
+          ocr_text = excluded.ocr_text,
           pinned = excluded.pinned,
           tags_json = excluded.tags_json,
           category = excluded.category,
@@ -79,10 +106,21 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       `,
   });
 
-  const upsertFts = (id: string, content: string, preview: string, category: string) =>
+  const upsertFts = (
+    id: string,
+    content: string,
+    preview: string,
+    category: string,
+    tagsDocument: string,
+    sourceApp: string | null,
+    ocrText: string | null,
+  ) =>
     sql`DELETE FROM clips_fts WHERE id = ${id}`.pipe(
       Effect.flatMap(() =>
-        sql`INSERT INTO clips_fts (id, content, preview, category) VALUES (${id}, ${content}, ${preview}, ${category})`,
+        sql`
+          INSERT INTO clips_fts (id, content, preview, category, tags, source_app, ocr_text)
+          VALUES (${id}, ${content}, ${preview}, ${category}, ${tagsDocument}, ${sourceApp ?? ""}, ${ocrText ?? ""})
+        `,
       ),
     );
 
@@ -92,7 +130,14 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     execute: ({ id }) =>
       sql`
         SELECT id, content, content_type AS "contentType", preview,
-               image_data_url AS "imageDataUrl", pinned,
+               image_data_url AS "imageDataUrl",
+               image_asset_id AS "imageAssetId",
+               image_asset_path AS "imageAssetPath",
+               image_width AS "imageWidth",
+               image_height AS "imageHeight",
+               image_mime_type AS "imageMimeType",
+               ocr_text AS "ocrText",
+               pinned,
                tags_json AS "tagsJson", category, source_app AS "sourceApp",
                paste_count AS "pasteCount", captured_at AS "capturedAt",
                deleted_at AS "deletedAt", metadata_json AS "metadataJson"
@@ -106,7 +151,14 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     execute: ({ limit }) =>
       sql`
         SELECT id, content, content_type AS "contentType", preview,
-               image_data_url AS "imageDataUrl", pinned,
+               image_data_url AS "imageDataUrl",
+               image_asset_id AS "imageAssetId",
+               image_asset_path AS "imageAssetPath",
+               image_width AS "imageWidth",
+               image_height AS "imageHeight",
+               image_mime_type AS "imageMimeType",
+               ocr_text AS "ocrText",
+               pinned,
                tags_json AS "tagsJson", category, source_app AS "sourceApp",
                paste_count AS "pasteCount", captured_at AS "capturedAt",
                deleted_at AS "deletedAt", metadata_json AS "metadataJson"
@@ -120,8 +172,10 @@ const makeProjectionClipRepository = Effect.gen(function* () {
   const searchRows = SqlSchema.findAll({
     Request: SearchInput,
     Result: ProjectionClipRow,
-    execute: ({ query, filters, limit }) => {
+    execute: ({ query, rawQuery, filters, limit }) => {
       const normalizedFilters = normalizeSearchFilters(filters);
+      const normalizedRawQuery = rawQuery?.trim() ?? "";
+      const prefixQuery = `${normalizedRawQuery}%`;
       const contentType = normalizedFilters?.contentType ?? null;
       const pinned = normalizedFilters?.pinned === undefined
         ? null
@@ -135,7 +189,14 @@ const makeProjectionClipRepository = Effect.gen(function* () {
 
       return sql`
         SELECT c.id, c.content, c.content_type AS "contentType", c.preview,
-               c.image_data_url AS "imageDataUrl", c.pinned,
+               c.image_data_url AS "imageDataUrl",
+               c.image_asset_id AS "imageAssetId",
+               c.image_asset_path AS "imageAssetPath",
+               c.image_width AS "imageWidth",
+               c.image_height AS "imageHeight",
+               c.image_mime_type AS "imageMimeType",
+               c.ocr_text AS "ocrText",
+               c.pinned,
                c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
                c.paste_count AS "pasteCount", c.captured_at AS "capturedAt",
                c.deleted_at AS "deletedAt", c.metadata_json AS "metadataJson"
@@ -153,7 +214,21 @@ const makeProjectionClipRepository = Effect.gen(function* () {
           AND (${sourceApp} IS NULL OR c.source_app = ${sourceApp})
           AND (${dateFrom} IS NULL OR date(c.captured_at) >= date(${dateFrom}))
           AND (${dateTo} IS NULL OR date(c.captured_at) <= date(${dateTo}))
-        ORDER BY c.pinned DESC, rank, c.paste_count DESC, c.captured_at DESC
+        ORDER BY
+          CASE
+            WHEN ${normalizedRawQuery} = '' THEN 4
+            WHEN lower(trim(c.content)) = lower(${normalizedRawQuery}) THEN 0
+            WHEN lower(COALESCE(c.source_app, '')) = lower(${normalizedRawQuery}) THEN 1
+            WHEN lower(COALESCE(c.ocr_text, '')) = lower(${normalizedRawQuery}) THEN 2
+            WHEN lower(c.content) LIKE lower(${prefixQuery}) THEN 3
+            WHEN lower(c.preview) LIKE lower(${prefixQuery}) THEN 4
+            WHEN lower(COALESCE(c.ocr_text, '')) LIKE lower(${prefixQuery}) THEN 5
+            ELSE 6
+          END,
+          c.pinned DESC,
+          rank,
+          c.paste_count DESC,
+          c.captured_at DESC
         LIMIT ${limit}
       `;
     },
@@ -177,7 +252,14 @@ const makeProjectionClipRepository = Effect.gen(function* () {
 
       return sql`
         SELECT c.id, c.content, c.content_type AS "contentType", c.preview,
-               c.image_data_url AS "imageDataUrl", c.pinned,
+               c.image_data_url AS "imageDataUrl",
+               c.image_asset_id AS "imageAssetId",
+               c.image_asset_path AS "imageAssetPath",
+               c.image_width AS "imageWidth",
+               c.image_height AS "imageHeight",
+               c.image_mime_type AS "imageMimeType",
+               c.ocr_text AS "ocrText",
+               c.pinned,
                c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
                c.paste_count AS "pasteCount", c.captured_at AS "capturedAt",
                c.deleted_at AS "deletedAt", c.metadata_json AS "metadataJson"
@@ -201,7 +283,17 @@ const makeProjectionClipRepository = Effect.gen(function* () {
 
   const upsert: ProjectionClipRepositoryShape["upsert"] = (row) =>
     upsertRow(row).pipe(
-      Effect.flatMap(() => upsertFts(row.id, row.content, row.preview, row.category)),
+      Effect.flatMap(() =>
+        upsertFts(
+          row.id,
+          row.content,
+          row.preview,
+          row.category,
+          toFtsTagDocument(row.tagsJson),
+          row.sourceApp,
+          row.ocrText,
+        )
+      ),
       Effect.mapError(toPersistenceSqlError("ProjectionClips.upsert")),
     );
 
@@ -221,7 +313,12 @@ const makeProjectionClipRepository = Effect.gen(function* () {
   const search: ProjectionClipRepositoryShape["search"] = (input) => {
     const query = toFtsMatchQuery(input.query);
     const filters = normalizeSearchFilters(input.filters);
-    const normalizedInput: SearchInput = { ...input, query, filters };
+    const normalizedInput: SearchInput = {
+      ...input,
+      query,
+      rawQuery: input.query.trim(),
+      filters,
+    };
 
     if (query.length === 0) {
       return filteredRows(normalizedInput).pipe(
@@ -249,6 +346,22 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       execute: (r) =>
         sql`UPDATE projection_clips SET tags_json = ${r.tagsJson} WHERE id = ${r.id}`,
     })({ id, tagsJson }).pipe(
+      Effect.flatMap(() => getByIdRow({ id })),
+      Effect.flatMap((row) => {
+        if (row._tag === "None") {
+          return sql`DELETE FROM clips_fts WHERE id = ${id}`.pipe(Effect.asVoid);
+        }
+
+        return upsertFts(
+          row.value.id,
+          row.value.content,
+          row.value.preview,
+          row.value.category,
+          toFtsTagDocument(row.value.tagsJson),
+          row.value.sourceApp,
+          row.value.ocrText,
+        );
+      }),
       Effect.mapError(toPersistenceSqlError("ProjectionClips.updateTags")),
     );
 
@@ -264,6 +377,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       execute: (r) =>
         sql`UPDATE projection_clips SET deleted_at = ${r.deletedAt} WHERE id = ${r.id}`,
     })({ id, deletedAt }).pipe(
+      Effect.flatMap(() => sql`DELETE FROM clips_fts WHERE id = ${id}`.pipe(Effect.asVoid)),
       Effect.mapError(toPersistenceSqlError("ProjectionClips.softDelete")),
     );
 

@@ -12,6 +12,9 @@ export interface ClipboardDesktopBridge {
   /** Write image content to the system clipboard from a data URL */
   readonly writeImageDataUrl: (dataUrl: string) => Promise<boolean>;
 
+  /** Write image content to the system clipboard from a saved file path */
+  readonly writeImageFile: (path: string) => Promise<boolean>;
+
   /** Read current text from the system clipboard */
   readonly readClipboard: () => Promise<string>;
 
@@ -50,6 +53,7 @@ export interface ContextMenuItem {
 export const IPC_CHANNELS = {
   writeClipboard: "clipboard:write",
   writeImageDataUrl: "clipboard:write-image-data-url",
+  writeImageFile: "clipboard:write-image-file",
   readClipboard: "clipboard:read",
   contextMenu: "desktop:context-menu",
   openExternal: "desktop:open-external",

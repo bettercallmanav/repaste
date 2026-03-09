@@ -40,6 +40,7 @@ const SERVER_PORT = 3847;
 const SERVER_HOST = "127.0.0.1";
 const AUTH_TOKEN = crypto.randomUUID();
 const STATE_DIR = path.join(app.getPath("userData"), "data");
+const IMAGE_ASSET_DIR = path.join(STATE_DIR, "images");
 const APPEARANCE_PATH = path.join(app.getPath("userData"), "appearance.json");
 const WS_URL = `ws://${SERVER_HOST}:${SERVER_PORT}?token=${AUTH_TOKEN}`;
 
@@ -181,7 +182,7 @@ function connectToServer(): void {
   serverWs.on("open", () => {
     console.log("Connected to server via WebSocket");
     // Start clipboard monitoring once connected
-    clipboardMonitor.start(dispatchCommand);
+    clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR });
     refreshTrayRecentClips();
   });
 
@@ -319,6 +320,18 @@ function registerIpcHandlers(): void {
     if (typeof dataUrl !== "string") return false;
     try {
       const image = nativeImage.createFromDataURL(dataUrl);
+      if (image.isEmpty()) return false;
+      clipboard.writeImage(image);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.writeImageFile, (_event, imagePath: unknown) => {
+    if (typeof imagePath !== "string") return false;
+    try {
+      const image = nativeImage.createFromPath(imagePath);
       if (image.isEmpty()) return false;
       clipboard.writeImage(image);
       return true;

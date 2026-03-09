@@ -12,12 +12,19 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function getImageDisplaySrc(clip: Clip): string | null {
+  if (clip.imageDataUrl) return clip.imageDataUrl;
+  if (clip.imageAssetPath) return encodeURI(`file://${clip.imageAssetPath}`);
+  return null;
+}
+
 export function ClipDetail() {
   const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip } =
     useClipboardStore();
 
   const clip = clips.find((c: Clip) => c.id === selectedClipId);
   if (!clip) return null;
+  const imageDisplaySrc = clip.contentType === "image" ? getImageDisplaySrc(clip) : null;
 
   return (
     <div className="ui-divider ui-panel-tint flex h-full flex-col border-l">
@@ -34,9 +41,9 @@ export function ClipDetail() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {clip.contentType === "image" && clip.imageDataUrl ? (
+        {clip.contentType === "image" && imageDisplaySrc ? (
           <img
-            src={clip.imageDataUrl}
+            src={imageDisplaySrc}
             alt="Clipboard image"
             className="ui-image-frame max-w-full rounded-lg border"
           />
@@ -53,6 +60,10 @@ export function ClipDetail() {
           <DetailField label="Paste count" value={String(clip.pasteCount)} />
           <DetailField label="Pinned" value={clip.pinned ? "Yes" : "No"} />
           {clip.sourceApp && <DetailField label="Source" value={clip.sourceApp} />}
+          {(clip.imageWidth && clip.imageHeight) && (
+            <DetailField label="Dimensions" value={`${clip.imageWidth} x ${clip.imageHeight}`} />
+          )}
+          {clip.imageMimeType && <DetailField label="Image type" value={clip.imageMimeType} />}
           {clip.metadata.charCount > 0 && (
             <DetailField label="Characters" value={String(clip.metadata.charCount)} />
           )}
@@ -63,6 +74,15 @@ export function ClipDetail() {
             <DetailField label="Language" value={clip.metadata.language} />
           )}
         </dl>
+
+        {clip.ocrText && clip.ocrText.length > 0 && (
+          <div className="mt-4">
+            <h3 className="ui-text-muted text-xs font-medium">OCR Text</h3>
+            <pre className="ui-pre mt-1 whitespace-pre-wrap break-all rounded-lg p-3 text-xs font-mono leading-relaxed">
+              {clip.ocrText}
+            </pre>
+          </div>
+        )}
 
         {/* Tags with add/remove */}
         <TagInput clipId={clip.id} tags={clip.tags} />

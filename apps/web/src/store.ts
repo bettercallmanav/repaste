@@ -114,9 +114,17 @@ async function writeImageToClipboard(dataUrl: string): Promise<void> {
 }
 
 async function writeClipToClipboard(clip: Clip): Promise<void> {
-  if (clip.contentType === "image" && clip.imageDataUrl) {
-    await writeImageToClipboard(clip.imageDataUrl);
-    return;
+  if (clip.contentType === "image") {
+    const desktopBridge = getDesktopBridge();
+    if (clip.imageAssetPath && desktopBridge) {
+      const success = await desktopBridge.writeImageFile(clip.imageAssetPath);
+      if (success) return;
+    }
+
+    if (clip.imageDataUrl) {
+      await writeImageToClipboard(clip.imageDataUrl);
+      return;
+    }
   }
 
   await writeTextToClipboard(clip.content);

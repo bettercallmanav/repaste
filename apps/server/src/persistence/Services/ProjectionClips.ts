@@ -11,6 +11,12 @@ export const ProjectionClipRow = Schema.Struct({
   contentType: Schema.String,
   preview: Schema.String,
   imageDataUrl: Schema.NullOr(Schema.String),
+  imageAssetId: Schema.NullOr(Schema.String),
+  imageAssetPath: Schema.NullOr(Schema.String),
+  imageWidth: Schema.NullOr(NonNegativeInt),
+  imageHeight: Schema.NullOr(NonNegativeInt),
+  imageMimeType: Schema.NullOr(Schema.String),
+  ocrText: Schema.NullOr(Schema.String),
   pinned: Schema.Number,
   tagsJson: UnknownFromJsonString,
   category: Schema.String,
@@ -24,6 +30,7 @@ export type ProjectionClipRow = typeof ProjectionClipRow.Type;
 
 export const SearchInput = Schema.Struct({
   query: Schema.String,
+  rawQuery: Schema.optional(Schema.String),
   filters: Schema.optional(ClipSearchFilters),
   limit: Schema.Number,
 });
