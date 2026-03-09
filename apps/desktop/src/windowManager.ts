@@ -8,6 +8,7 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 export interface WindowManagerOptions {
   preloadPath: string;
   webDistPath: string;
+  backgroundColor?: string;
 }
 
 /**
@@ -15,6 +16,7 @@ export interface WindowManagerOptions {
  */
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
+  private allowWindowClose = false;
 
   create(options: WindowManagerOptions): BrowserWindow {
     const windowOptions: BrowserWindowConstructorOptions = {
@@ -24,6 +26,7 @@ export class WindowManager {
       frame: true,
       resizable: true,
       skipTaskbar: false,
+      backgroundColor: options.backgroundColor,
       webPreferences: {
         preload: options.preloadPath,
         contextIsolation: true,
@@ -36,6 +39,10 @@ export class WindowManager {
 
     // Hide instead of close when the user hits the close button
     this.mainWindow.on("close", (e) => {
+      if (this.allowWindowClose) {
+        return;
+      }
+
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         e.preventDefault();
         this.mainWindow.hide();
@@ -85,11 +92,16 @@ export class WindowManager {
   }
 
   destroy(): void {
+    this.allowWindowClose = true;
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       // Remove close handler so it actually closes
       this.mainWindow.removeAllListeners("close");
       this.mainWindow.destroy();
     }
     this.mainWindow = null;
+  }
+
+  prepareForQuit(): void {
+    this.allowWindowClose = true;
   }
 }

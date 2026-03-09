@@ -37,12 +37,12 @@ function App() {
   }, [setActiveView]);
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+    <div className="ui-shell flex h-screen flex-col">
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
-        <Clipboard className="size-5 text-blue-400" />
-        <h1 className="text-sm font-semibold text-zinc-100">Repaste</h1>
-        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+      <header className="ui-divider flex items-center gap-3 border-b px-4 py-3">
+        <Clipboard className="ui-header-icon size-5" />
+        <h1 className="ui-text-primary text-sm font-semibold">Repaste</h1>
+        <span className="ui-badge rounded-full px-2 py-0.5 text-xs">
           {clips.length} clips
         </span>
 
@@ -52,8 +52,8 @@ function App() {
             onClick={() => { setActiveView("clips"); setShowSettings(false); }}
             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
               activeView === "clips" && !showSettings
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "ui-tab-active"
+                : "ui-tab"
             }`}
           >
             <Clipboard className="size-3" />
@@ -63,22 +63,22 @@ function App() {
             onClick={() => { setActiveView("snippets"); setShowSettings(false); }}
             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
               activeView === "snippets" && !showSettings
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "ui-tab-active"
+                : "ui-tab"
             }`}
           >
             <Scissors className="size-3" />
             Snippets
             {snippets.length > 0 && (
-              <span className="rounded-full bg-zinc-600 px-1.5 text-xs">{snippets.length}</span>
+              <span className="ui-badge rounded-full px-1.5 text-xs">{snippets.length}</span>
             )}
           </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
               showSettings
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "ui-tab-active"
+                : "ui-tab"
             }`}
           >
             <Settings className="size-3" />
@@ -91,7 +91,7 @@ function App() {
       ) : activeView === "clips" ? (
         <>
           {/* Search */}
-          <div className="border-b border-zinc-800 px-4 py-2">
+          <div className="ui-divider border-b px-4 py-2">
             <SearchBar />
           </div>
 

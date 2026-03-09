@@ -1,5 +1,7 @@
 // ─── Desktop Bridge (Electron preload → renderer) ───────────────────────────
 
+export type AppearanceTheme = "system" | "light" | "dark";
+
 export interface ClipboardDesktopBridge {
   /** WebSocket URL to connect to the backend server */
   readonly getWsUrl: () => string | null;
@@ -20,6 +22,12 @@ export interface ClipboardDesktopBridge {
 
   /** Open a URL in the default browser */
   readonly openExternal: (url: string) => Promise<boolean>;
+
+  /** Read the persisted desktop appearance preference */
+  readonly getThemePreference: () => Promise<AppearanceTheme>;
+
+  /** Persist and apply the desktop appearance preference */
+  readonly setThemePreference: (theme: AppearanceTheme) => Promise<AppearanceTheme>;
 
   /** Subscribe to menu bar actions */
   readonly onMenuAction: (listener: (action: string) => void) => () => void;
@@ -45,6 +53,8 @@ export const IPC_CHANNELS = {
   readClipboard: "clipboard:read",
   contextMenu: "desktop:context-menu",
   openExternal: "desktop:open-external",
+  getThemePreference: "desktop:get-theme-preference",
+  setThemePreference: "desktop:set-theme-preference",
   menuAction: "desktop:menu-action",
   globalShortcut: "desktop:global-shortcut",
   trayClipSelected: "tray:clip-selected",

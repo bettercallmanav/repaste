@@ -12,7 +12,7 @@ const CONTENT_TYPE_COLORS: Record<string, string> = {
   filePath: "text-cyan-400",
   image: "text-rose-400",
   richText: "text-emerald-400",
-  text: "text-zinc-400",
+  text: "ui-text-muted",
 };
 
 function formatRelativeTime(iso: string): string {
@@ -40,7 +40,7 @@ interface ClipCardProps {
 
 export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
   const { copyClip, selectClip, pinClip, unpinClip, deleteClip, pasteClip, toggleClipSelection } = useClipboardStore();
-  const colorClass = CONTENT_TYPE_COLORS[clip.contentType] ?? "text-zinc-400";
+  const colorClass = CONTENT_TYPE_COLORS[clip.contentType] ?? "ui-text-muted";
 
   return (
     <div
@@ -48,10 +48,10 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
       onDoubleClick={() => pasteClip(clip.id)}
       className={`group cursor-pointer rounded-lg border p-3 transition-colors ${
         selected
-          ? "border-blue-500 bg-blue-500/10"
+          ? "ui-card-selected"
           : multiSelected
-            ? "border-blue-400/50 bg-blue-500/5"
-            : "border-zinc-700/50 bg-zinc-800/50 hover:border-zinc-600"
+            ? "ui-card-multi"
+            : "ui-card"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -67,10 +67,10 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-xs">
               <span className={`font-medium ${colorClass}`}>{clip.contentType}</span>
-              <span className="text-zinc-500">{formatRelativeTime(clip.capturedAt)}</span>
+              <span className="ui-text-muted">{formatRelativeTime(clip.capturedAt)}</span>
               {clip.pinned && <Pin className="size-3 text-amber-400" />}
               {clip.pasteCount > 0 && (
-                <span className="text-zinc-500">&times;{clip.pasteCount}</span>
+                <span className="ui-text-muted">&times;{clip.pasteCount}</span>
               )}
             </div>
 
@@ -81,19 +81,19 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
                 <img
                   src={clip.imageDataUrl}
                   alt="Clipboard image"
-                  className="max-h-16 max-w-[120px] rounded border border-zinc-700 object-contain"
+                  className="ui-image-frame max-h-16 max-w-[120px] rounded border object-contain"
                 />
               </div>
             ) : clip.contentType === "color" ? (
               <div className="mt-1 flex items-center gap-2">
                 <div
-                  className="size-4 rounded border border-zinc-600"
+                  className="ui-divider size-4 rounded border"
                   style={{ backgroundColor: clip.content.trim() }}
                 />
-                <span className="text-sm text-zinc-200 font-mono">{clip.content.trim()}</span>
+                <span className="ui-text-primary text-sm font-mono">{clip.content.trim()}</span>
               </div>
             ) : (
-              <p className="mt-1 text-sm text-zinc-200 leading-relaxed break-all">
+              <p className="ui-text-primary mt-1 break-all text-sm leading-relaxed">
                 {truncate(clip.content, 200)}
               </p>
             )}
@@ -103,7 +103,7 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
                 {clip.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 rounded-full bg-zinc-700 px-2 py-0.5 text-xs text-zinc-300"
+                    className="ui-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                   >
                     <Tag className="size-2.5" />
                     {tag}
@@ -119,7 +119,7 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
               e.stopPropagation();
               void copyClip(clip.id);
             }}
-            className="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+            className="ui-icon-button rounded p-1"
             title="Copy to clipboard"
           >
             <Copy className="size-3.5" />
@@ -129,8 +129,8 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
               e.stopPropagation();
               if (clip.pinned) { unpinClip(clip.id); } else { pinClip(clip.id); }
             }}
-            className={`rounded p-1 hover:bg-zinc-700 ${
-              clip.pinned ? "text-amber-400" : "text-zinc-400 hover:text-zinc-200"
+            className={`rounded p-1 ${
+              clip.pinned ? "text-amber-400 hover:bg-amber-500/10" : "ui-icon-button"
             }`}
             title={clip.pinned ? "Unpin" : "Pin"}
           >
@@ -141,7 +141,7 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
               e.stopPropagation();
               deleteClip(clip.id);
             }}
-            className="rounded p-1 text-zinc-400 hover:bg-red-500/20 hover:text-red-400"
+            className="ui-icon-button-danger rounded p-1"
             title="Delete"
           >
             <Trash2 className="size-3.5" />

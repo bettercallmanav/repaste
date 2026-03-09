@@ -1,5 +1,5 @@
-import { app, clipboard, ipcMain, shell, Menu, nativeImage } from "electron";
-import { mkdirSync } from "node:fs";
+import { app, clipboard, ipcMain, shell, Menu, nativeImage, nativeTheme } from "electron";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
@@ -8,6 +8,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardCommand, ClipboardReadModel } from "@clipm/contracts";
 import { IPC_CHANNELS } from "@clipm/contracts/ipc";
+import type { AppearanceTheme } from "@clipm/contracts/ipc";
 import { makeServerProgram, makeRuntimeLayer } from "@clipm/server/main";
 
 import { WindowManager } from "./windowManager.ts";
@@ -39,6 +40,7 @@ const SERVER_PORT = 3847;
 const SERVER_HOST = "127.0.0.1";
 const AUTH_TOKEN = crypto.randomUUID();
 const STATE_DIR = path.join(app.getPath("userData"), "data");
+const APPEARANCE_PATH = path.join(app.getPath("userData"), "appearance.json");
 const WS_URL = `ws://${SERVER_HOST}:${SERVER_PORT}?token=${AUTH_TOKEN}`;
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ const clipboardMonitor = new ClipboardMonitor();
 let serverWs: WebSocket | null = null;
 let isQuitting = false;
 let nextServerRequestId = 1;
+let themePreference: AppearanceTheme = "system";
 
 const pendingServerRequests = new Map<
   string,
@@ -62,6 +65,51 @@ const pendingServerRequests = new Map<
 >();
 
 const SERVER_REQUEST_TIMEOUT_MS = 5_000;
+
+function normalizeThemePreference(value: unknown): AppearanceTheme {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
+}
+
+function loadThemePreference(): AppearanceTheme {
+  try {
+    const raw = readFileSync(APPEARANCE_PATH, "utf8");
+    const parsed = JSON.parse(raw) as { theme?: unknown };
+    return normalizeThemePreference(parsed.theme);
+  } catch {
+    return "system";
+  }
+}
+
+function saveThemePreference(theme: AppearanceTheme): void {
+  writeFileSync(APPEARANCE_PATH, JSON.stringify({ theme }), "utf8");
+}
+
+function resolveThemeMode(theme: AppearanceTheme): "light" | "dark" {
+  if (theme === "light" || theme === "dark") return theme;
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+function getWindowBackgroundColor(theme: AppearanceTheme): string {
+  return resolveThemeMode(theme) === "dark" ? "#09090b" : "#f3f4f6";
+}
+
+function syncWindowBackground(theme: AppearanceTheme): void {
+  const mainWindow = windowManager.getWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(getWindowBackgroundColor(theme));
+  }
+}
+
+function applyThemePreference(theme: AppearanceTheme): AppearanceTheme {
+  const normalized = normalizeThemePreference(theme);
+  themePreference = normalized;
+  nativeTheme.themeSource = normalized;
+  syncWindowBackground(normalized);
+  return normalized;
+}
 
 // ─── In-process Server ──────────────────────────────────────────────────────
 
@@ -291,6 +339,14 @@ function registerIpcHandlers(): void {
     return true;
   });
 
+  ipcMain.handle(IPC_CHANNELS.getThemePreference, () => themePreference);
+
+  ipcMain.handle(IPC_CHANNELS.setThemePreference, (_event, theme: unknown) => {
+    const nextTheme = applyThemePreference(normalizeThemePreference(theme));
+    saveThemePreference(nextTheme);
+    return nextTheme;
+  });
+
   ipcMain.handle(IPC_CHANNELS.contextMenu, (_event, items: unknown) => {
     if (!Array.isArray(items)) return null;
 
@@ -391,6 +447,13 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    themePreference = applyThemePreference(loadThemePreference());
+    nativeTheme.on("updated", () => {
+      if (themePreference === "system") {
+        syncWindowBackground(themePreference);
+      }
+    });
+
     // Enable start at login so the app survives reboots
     if (app.isPackaged) {
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
@@ -407,6 +470,7 @@ if (!gotLock) {
     const mainWindow = windowManager.create({
       preloadPath: PRELOAD_PATH,
       webDistPath: WEB_DIST_PATH,
+      backgroundColor: getWindowBackgroundColor(themePreference),
     });
 
     // Setup tray, shortcuts, menu
@@ -426,6 +490,8 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     isQuitting = true;
+    windowManager.prepareForQuit();
+    trayManager.destroy();
   });
 
   app.on("will-quit", () => {

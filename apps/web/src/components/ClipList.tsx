@@ -9,7 +9,7 @@ export function ClipList() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-zinc-500">
+      <div className="ui-empty flex flex-1 items-center justify-center">
         Loading...
       </div>
     );
@@ -17,7 +17,7 @@ export function ClipList() {
 
   if (displayClips.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-500">
+      <div className="ui-empty flex flex-1 flex-col items-center justify-center gap-3">
         <Clipboard className="size-12 opacity-30" />
         <p className="text-sm">
           {searchResults ? "No clips match your search" : "No clips yet"}

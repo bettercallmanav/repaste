@@ -25,18 +25,18 @@ export function SearchBar() {
 
   return (
     <div className="relative">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
+      <Search className="ui-text-muted absolute left-3 top-1/2 size-4 -translate-y-1/2" />
       <input
         type="text"
         placeholder="Search clips..."
         value={searchQuery}
         onChange={handleChange}
-        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-10 pr-8 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+        className="ui-input w-full rounded-lg py-2 pl-10 pr-8 text-sm"
       />
       {searchQuery.length > 0 && (
         <button
           onClick={clearSearch}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-200"
+          className="ui-icon-button absolute right-2 top-1/2 rounded p-0.5 -translate-y-1/2"
         >
           <X className="size-4" />
         </button>

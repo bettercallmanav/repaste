@@ -1,21 +1,42 @@
 import { useState, useEffect } from "react";
 import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react";
+import type { AppearanceTheme, ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 
-type Theme = "system" | "light" | "dark";
+type Theme = AppearanceTheme;
+
+type DesktopWindow = Window & {
+  desktopBridge?: ClipboardDesktopBridge;
+};
+
+function getDesktopBridge(): ClipboardDesktopBridge | undefined {
+  return (window as DesktopWindow).desktopBridge;
+}
 
 function getStoredTheme(): Theme {
-  return (localStorage.getItem("clipm-theme") as Theme) ?? "system";
+  const stored = localStorage.getItem("clipm-theme");
+  if (stored === "light" || stored === "dark" || stored === "system") {
+    return stored;
+  }
+  return "system";
+}
+
+function resolveTheme(theme: Theme): Exclude<Theme, "system"> {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
-  if (theme === "system") {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    root.classList.toggle("dark", prefersDark);
-    root.classList.toggle("light", !prefersDark);
-  } else {
-    root.classList.toggle("dark", theme === "dark");
-    root.classList.toggle("light", theme === "light");
+  const resolvedTheme = resolveTheme(theme);
+
+  root.dataset.theme = resolvedTheme;
+  root.style.colorScheme = resolvedTheme;
+  root.classList.remove("light", "dark");
+  root.classList.add(resolvedTheme);
+
+  if (document.body) {
+    document.body.style.backgroundColor = resolvedTheme === "dark" ? "#09090b" : "#f3f4f6";
+    document.body.style.color = resolvedTheme === "dark" ? "#f8fafc" : "#111827";
   }
 }
 
@@ -31,6 +52,11 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     localStorage.setItem("clipm-theme", theme);
     applyTheme(theme);
+    const desktopBridge = getDesktopBridge();
+    if (!desktopBridge) return;
+    void desktopBridge.setThemePreference(theme).catch((error) => {
+      console.error("Failed to persist desktop theme preference", error);
+    });
   }, [theme]);
 
   // Listen for system theme changes when using "system" theme
@@ -44,14 +70,14 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <div className="ui-divider flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
-          <SettingsIcon className="size-4 text-zinc-400" />
-          <h2 className="text-sm font-semibold text-zinc-100">Settings</h2>
+          <SettingsIcon className="ui-text-muted size-4" />
+          <h2 className="ui-text-primary text-sm font-semibold">Settings</h2>
         </div>
         <button
           onClick={onClose}
-          className="rounded px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+          className="ui-tab rounded px-2 py-1 text-xs"
         >
           Done
         </button>
@@ -60,7 +86,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Theme */}
         <div>
-          <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Appearance</h3>
+          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">Appearance</h3>
           <div className="mt-2 flex gap-2">
             {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
               <button
@@ -68,8 +94,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
                 onClick={() => setTheme(value)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                   theme === value
-                    ? "bg-blue-600 text-white"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    ? "ui-theme-option-active"
+                    : "ui-theme-option"
                 }`}
               >
                 <Icon className="size-3.5" />
@@ -81,8 +107,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
 
         {/* Info */}
         <div>
-          <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">About</h3>
-          <div className="mt-2 space-y-1 text-xs text-zinc-500">
+          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">About</h3>
+          <div className="ui-text-muted mt-2 space-y-1 text-xs">
             <p>Repaste v0.0.1</p>
             <p>Event-sourced clipboard history</p>
           </div>

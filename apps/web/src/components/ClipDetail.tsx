@@ -6,8 +6,8 @@ import { TagInput } from "./TagInput.tsx";
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-zinc-500">{label}</dt>
-      <dd className="mt-0.5 text-sm text-zinc-300">{value}</dd>
+      <dt className="ui-text-muted text-xs font-medium">{label}</dt>
+      <dd className="ui-text-secondary mt-0.5 text-sm">{value}</dd>
     </div>
   );
 }
@@ -20,13 +20,13 @@ export function ClipDetail() {
   if (!clip) return null;
 
   return (
-    <div className="flex h-full flex-col border-l border-zinc-700/50 bg-zinc-900/50">
+    <div className="ui-divider ui-panel-tint flex h-full flex-col border-l">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-700/50 px-4 py-3">
-        <h2 className="text-sm font-medium text-zinc-200">Clip Detail</h2>
+      <div className="ui-divider flex items-center justify-between border-b px-4 py-3">
+        <h2 className="ui-text-primary text-sm font-medium">Clip Detail</h2>
         <button
           onClick={() => selectClip(null)}
-          className="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+          className="ui-icon-button rounded p-1"
         >
           <X className="size-4" />
         </button>
@@ -38,10 +38,10 @@ export function ClipDetail() {
           <img
             src={clip.imageDataUrl}
             alt="Clipboard image"
-            className="max-w-full rounded-lg border border-zinc-700"
+            className="ui-image-frame max-w-full rounded-lg border"
           />
         ) : (
-          <pre className="whitespace-pre-wrap break-all rounded-lg bg-zinc-800 p-3 text-sm text-zinc-200 font-mono leading-relaxed">
+          <pre className="ui-pre whitespace-pre-wrap break-all rounded-lg p-3 text-sm font-mono leading-relaxed">
             {clip.content}
           </pre>
         )}
@@ -69,10 +69,10 @@ export function ClipDetail() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 border-t border-zinc-700/50 p-3">
+      <div className="ui-divider flex gap-2 border-t p-3">
         <button
           onClick={() => { void copyClip(clip.id); }}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+          className="ui-btn-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
         >
           <Copy className="size-3.5" />
           Copy
@@ -81,7 +81,7 @@ export function ClipDetail() {
           onClick={() => {
             if (clip.pinned) { unpinClip(clip.id); } else { pinClip(clip.id); }
           }}
-          className="flex items-center gap-1.5 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-600"
+          className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
         >
           <Pin className="size-3.5" />
           {clip.pinned ? "Unpin" : "Pin"}
@@ -91,7 +91,7 @@ export function ClipDetail() {
             deleteClip(clip.id);
             selectClip(null);
           }}
-          className="flex items-center gap-1.5 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
+          className="ui-btn-danger flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
         >
           <Trash2 className="size-3.5" />
           Delete
