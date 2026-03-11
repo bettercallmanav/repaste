@@ -1,4 +1,4 @@
-import { Pin, Trash2, Copy, Tag, Image } from "lucide-react";
+import { Pin, Trash2, Copy, Tag, Image, Eye, Loader2, AlertCircle } from "lucide-react";
 import type { Clip } from "@clipm/contracts";
 import { useClipboardStore } from "../store.ts";
 import { getClipSearchMatchMeta, getSearchSnippet, HighlightText } from "./SearchHighlight.tsx";
@@ -109,6 +109,15 @@ export function ClipCard({ clip, selected, multiSelected }: ClipCardProps) {
                     <span className="ui-text-muted text-xs">
                       {clip.imageWidth}x{clip.imageHeight}
                     </span>
+                  )}
+                  {clip.ocrStatus === "ready" && (
+                    <span title="OCR text available"><Eye className="size-3 text-emerald-500" /></span>
+                  )}
+                  {clip.ocrStatus === "pending" && (
+                    <span title="OCR pending"><Loader2 className="size-3 text-amber-400 animate-spin" /></span>
+                  )}
+                  {clip.ocrStatus === "failed" && (
+                    <span title="OCR failed"><AlertCircle className="size-3 text-red-400" /></span>
                   )}
                 </div>
                 {matchMeta.ocrOnlyMatch && matchMeta.ocrSnippet && (

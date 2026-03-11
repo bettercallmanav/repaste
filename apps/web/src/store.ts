@@ -3,6 +3,7 @@ import type { Clip, ClipSearchFilters, ClipboardCommand, Snippet } from "@clipm/
 import { WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { api } from "./api.ts";
+import { parseSearchQuery } from "./lib/searchQueryParser.ts";
 
 type ActiveView = "clips" | "snippets";
 
@@ -75,6 +76,9 @@ interface ClipboardStore {
   tagClip: (clipId: string, tag: string) => Promise<void>;
   untagClip: (clipId: string, tag: string) => Promise<void>;
   pasteClip: (clipId: string) => Promise<void>;
+  saveImageAs: (clipId: string) => Promise<void>;
+  revealImageInFinder: (clipId: string) => Promise<void>;
+  retryOcr: (clipId: string) => Promise<void>;
   mergeClips: (clipIds: readonly string[], separator: string) => Promise<void>;
 
   // Snippet actions
@@ -144,14 +148,22 @@ async function runSearch(
     return;
   }
 
-  const normalizedQuery = query.trim();
-  const normalizedFilters = normalizeSearchFilters(filters);
+  // Parse prefix syntax from query (e.g. "type:image sunset")
+  const parsed = parseSearchQuery(query);
+  const ftsQuery = parsed.text;
+  // Merge: manual filters take precedence over parsed filters
+  const mergedFilters = normalizeSearchFilters({
+    ...parsed.filters,
+    ...filters,
+  });
+
+  const normalizedQuery = ftsQuery.trim();
   const requestId = ++latestSearchRequestId;
-  const requestKey = getSearchRequestKey(normalizedQuery, normalizedFilters);
+  const requestKey = getSearchRequestKey(query, filters);
   set({ searchLoading: true, searchResolvedQuery: "" });
 
   try {
-    const { clips } = await api.search(normalizedQuery, normalizedFilters);
+    const { clips } = await api.search(normalizedQuery, mergedFilters);
     if (requestId !== latestSearchRequestId) return;
     if (getSearchRequestKey(get().searchQuery, get().searchFilters) !== requestKey) return;
     set({ searchResults: clips, searchResolvedQuery: normalizedQuery, searchLoading: false });
@@ -310,6 +322,33 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
       clipId,
       pastedAt: new Date().toISOString(),
     } as ClipboardCommand);
+  },
+
+  saveImageAs: async (clipId) => {
+    const clip = get().clips.find((c) => c.id === clipId);
+    if (!clip?.imageAssetPath) return;
+    const bridge = getDesktopBridge();
+    if (bridge?.saveImageAs) {
+      await bridge.saveImageAs(clip.imageAssetPath);
+    }
+  },
+
+  revealImageInFinder: async (clipId) => {
+    const clip = get().clips.find((c) => c.id === clipId);
+    if (!clip?.imageAssetPath) return;
+    const bridge = getDesktopBridge();
+    if (bridge?.revealImageInFinder) {
+      await bridge.revealImageInFinder(clip.imageAssetPath);
+    }
+  },
+
+  retryOcr: async (clipId) => {
+    const clip = get().clips.find((c) => c.id === clipId);
+    if (!clip?.imageAssetPath) return;
+    const bridge = getDesktopBridge();
+    if (bridge?.retryOcr) {
+      await bridge.retryOcr(clipId, clip.imageAssetPath);
+    }
   },
 
   mergeClips: async (clipIds, separator) => {

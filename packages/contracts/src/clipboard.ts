@@ -9,6 +9,11 @@ export const ContentType = Schema.Literals([
 ]);
 export type ContentType = typeof ContentType.Type;
 
+// ─── OCR Status ─────────────────────────────────────────────────────────────
+
+export const OcrStatus = Schema.Literals(["pending", "ready", "failed", "skipped"]);
+export type OcrStatus = typeof OcrStatus.Type;
+
 // ─── Aggregate Kinds ─────────────────────────────────────────────────────────
 
 export const ClipboardAggregateKind = Schema.Literals(["clip", "snippet", "settings"]);
@@ -42,6 +47,7 @@ export const ClipCaptureCommand = Schema.Struct({
   imageHeight: Schema.optional(Schema.NullOr(NonNegativeInt)),
   imageMimeType: Schema.optional(Schema.NullOr(Schema.String)),
   ocrText: Schema.optional(Schema.NullOr(Schema.String)),
+  ocrStatus: Schema.optional(OcrStatus),
   sourceApp: Schema.NullOr(Schema.String),
   metadata: ClipMetadata,
   capturedAt: IsoDateTime,
@@ -103,6 +109,14 @@ export const ClipUpdateOcrCommand = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 
+export const ClipUpdateOcrStatusCommand = Schema.Struct({
+  type: Schema.Literal("clip.updateOcrStatus"),
+  commandId: CommandId,
+  clipId: ClipId,
+  ocrStatus: OcrStatus,
+  updatedAt: IsoDateTime,
+});
+
 export const SnippetCreateCommand = Schema.Struct({
   type: Schema.Literal("snippet.create"),
   commandId: CommandId,
@@ -146,6 +160,7 @@ export const ClipboardCommand = Schema.Union([
   ClipMergeCommand,
   ClipPasteCommand,
   ClipUpdateOcrCommand,
+  ClipUpdateOcrStatusCommand,
   SnippetCreateCommand,
   SnippetUpdateCommand,
   SnippetDeleteCommand,
@@ -168,6 +183,7 @@ export const ClipCapturedPayload = Schema.Struct({
   imageHeight: Schema.optional(Schema.NullOr(NonNegativeInt)),
   imageMimeType: Schema.optional(Schema.NullOr(Schema.String)),
   ocrText: Schema.optional(Schema.NullOr(Schema.String)),
+  ocrStatus: Schema.optional(OcrStatus),
   sourceApp: Schema.NullOr(Schema.String),
   metadata: ClipMetadata,
   capturedAt: IsoDateTime,
@@ -175,7 +191,11 @@ export const ClipCapturedPayload = Schema.Struct({
 
 export const ClipPinnedPayload = Schema.Struct({ clipId: ClipId });
 export const ClipUnpinnedPayload = Schema.Struct({ clipId: ClipId });
-export const ClipDeletedPayload = Schema.Struct({ clipId: ClipId, deletedAt: IsoDateTime });
+export const ClipDeletedPayload = Schema.Struct({
+  clipId: ClipId,
+  deletedAt: IsoDateTime,
+  imageAssetId: Schema.optional(Schema.NullOr(Schema.String)),
+});
 
 export const ClipTaggedPayload = Schema.Struct({ clipId: ClipId, tag: Schema.String });
 export const ClipUntaggedPayload = Schema.Struct({ clipId: ClipId, tag: Schema.String });
@@ -193,6 +213,11 @@ export const ClipPastedPayload = Schema.Struct({ clipId: ClipId, pastedAt: IsoDa
 export const ClipOcrUpdatedPayload = Schema.Struct({
   clipId: ClipId,
   ocrText: Schema.String,
+  updatedAt: IsoDateTime,
+});
+export const ClipOcrStatusUpdatedPayload = Schema.Struct({
+  clipId: ClipId,
+  ocrStatus: OcrStatus,
   updatedAt: IsoDateTime,
 });
 export const ClipCaptureDeduplicatedPayload = Schema.Struct({
@@ -230,8 +255,8 @@ export const SettingsUpdatedPayload = Schema.Struct({
 
 export const ClipboardEventType = Schema.Literals([
   "clip.captured", "clip.pinned", "clip.unpinned", "clip.deleted",
-  "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted", "clip.ocrUpdated",
-  "clip.captureDeduplicated",
+  "clip.tagged", "clip.untagged", "clip.merged", "clip.pasted",
+  "clip.ocrUpdated", "clip.ocrStatusUpdated", "clip.captureDeduplicated",
   "snippet.created", "snippet.updated", "snippet.deleted",
   "settings.updated",
 ]);
@@ -266,6 +291,7 @@ export const Clip = Schema.Struct({
   imageHeight: Schema.NullOr(NonNegativeInt),
   imageMimeType: Schema.NullOr(Schema.String),
   ocrText: Schema.NullOr(Schema.String),
+  ocrStatus: Schema.NullOr(OcrStatus),
   pinned: Schema.Boolean,
   tags: Schema.Array(Schema.String),
   category: Schema.String,

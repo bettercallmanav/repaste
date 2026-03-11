@@ -6,6 +6,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BUFFER = 1024 * 1024;
 
 export class VisionOcrProvider implements OcrProvider {
+  readonly isAvailable = true;
+
   constructor(
     private readonly helperPath: string,
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS,

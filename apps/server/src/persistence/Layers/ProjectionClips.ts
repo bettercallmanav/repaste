@@ -15,6 +15,7 @@ const IdInput = Schema.Struct({ id: ClipId });
 const PinInput = Schema.Struct({ id: ClipId, pinned: Schema.Number });
 const TagsInput = Schema.Struct({ id: ClipId, tagsJson: Schema.String });
 const OcrTextInput = Schema.Struct({ id: ClipId, ocrText: Schema.String });
+const OcrStatusInput = Schema.Struct({ id: ClipId, ocrStatus: Schema.String });
 const SoftDeleteInput = Schema.Struct({ id: ClipId, deletedAt: Schema.String });
 type SearchFilters = Exclude<SearchInput["filters"], undefined>;
 
@@ -23,7 +24,7 @@ function toFtsMatchQuery(query: string): string {
     .trim()
     .split(/\s+/)
     .filter((token) => token.length > 0)
-    .map((token) => `"${token.replace(/"/g, "\"\"")}"`)
+    .map((token) => `"${token.replace(/"/g, "\"\"")}"*`)
     .join(" ");
 }
 
@@ -74,13 +75,15 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       sql`
         INSERT INTO projection_clips (
           id, content, content_type, preview, image_data_url,
-          image_asset_id, image_asset_path, image_width, image_height, image_mime_type, ocr_text,
+          image_asset_id, image_asset_path, image_width, image_height, image_mime_type,
+          ocr_text, ocr_status,
           pinned, tags_json, category, source_app,
           paste_count, captured_at, deleted_at, metadata_json
         )
         VALUES (
           ${r.id}, ${r.content}, ${r.contentType}, ${r.preview}, ${r.imageDataUrl},
-          ${r.imageAssetId}, ${r.imageAssetPath}, ${r.imageWidth}, ${r.imageHeight}, ${r.imageMimeType}, ${r.ocrText},
+          ${r.imageAssetId}, ${r.imageAssetPath}, ${r.imageWidth}, ${r.imageHeight}, ${r.imageMimeType},
+          ${r.ocrText}, ${r.ocrStatus},
           ${r.pinned}, ${r.tagsJson}, ${r.category}, ${r.sourceApp},
           ${r.pasteCount}, ${r.capturedAt}, ${r.deletedAt}, ${r.metadataJson}
         )
@@ -96,6 +99,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
           image_height = excluded.image_height,
           image_mime_type = excluded.image_mime_type,
           ocr_text = excluded.ocr_text,
+          ocr_status = excluded.ocr_status,
           pinned = excluded.pinned,
           tags_json = excluded.tags_json,
           category = excluded.category,
@@ -138,6 +142,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
                image_height AS "imageHeight",
                image_mime_type AS "imageMimeType",
                ocr_text AS "ocrText",
+               ocr_status AS "ocrStatus",
                pinned,
                tags_json AS "tagsJson", category, source_app AS "sourceApp",
                paste_count AS "pasteCount", captured_at AS "capturedAt",
@@ -159,6 +164,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
                image_height AS "imageHeight",
                image_mime_type AS "imageMimeType",
                ocr_text AS "ocrText",
+               ocr_status AS "ocrStatus",
                pinned,
                tags_json AS "tagsJson", category, source_app AS "sourceApp",
                paste_count AS "pasteCount", captured_at AS "capturedAt",
@@ -216,6 +222,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
                c.image_height AS "imageHeight",
                c.image_mime_type AS "imageMimeType",
                c.ocr_text AS "ocrText",
+               c.ocr_status AS "ocrStatus",
                c.pinned,
                c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
                c.paste_count AS "pasteCount", c.captured_at AS "capturedAt",
@@ -279,6 +286,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
                c.image_height AS "imageHeight",
                c.image_mime_type AS "imageMimeType",
                c.ocr_text AS "ocrText",
+               c.ocr_status AS "ocrStatus",
                c.pinned,
                c.tags_json AS "tagsJson", c.category, c.source_app AS "sourceApp",
                c.paste_count AS "pasteCount", c.captured_at AS "capturedAt",
@@ -374,10 +382,19 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     SqlSchema.void({
       Request: OcrTextInput,
       execute: (r) =>
-        sql`UPDATE projection_clips SET ocr_text = ${r.ocrText} WHERE id = ${r.id}`,
+        sql`UPDATE projection_clips SET ocr_text = ${r.ocrText}, ocr_status = 'ready' WHERE id = ${r.id}`,
     })({ id, ocrText }).pipe(
       Effect.flatMap(() => resyncFtsById(id)),
       Effect.mapError(toPersistenceSqlError("ProjectionClips.updateOcrText")),
+    );
+
+  const updateOcrStatus: ProjectionClipRepositoryShape["updateOcrStatus"] = (id, ocrStatus) =>
+    SqlSchema.void({
+      Request: OcrStatusInput,
+      execute: (r) =>
+        sql`UPDATE projection_clips SET ocr_status = ${r.ocrStatus} WHERE id = ${r.id}`,
+    })({ id, ocrStatus }).pipe(
+      Effect.mapError(toPersistenceSqlError("ProjectionClips.updateOcrStatus")),
     );
 
   const incrementPasteCount: ProjectionClipRepositoryShape["incrementPasteCount"] = (id) =>
@@ -405,6 +422,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     updatePinned,
     updateTags,
     updateOcrText,
+    updateOcrStatus,
     incrementPasteCount,
     softDelete,
   } satisfies ProjectionClipRepositoryShape;

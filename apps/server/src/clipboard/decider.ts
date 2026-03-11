@@ -106,6 +106,7 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           imageHeight: command.imageHeight ?? null,
           imageMimeType: command.imageMimeType ?? null,
           ocrText: command.ocrText ?? null,
+          ocrStatus: command.ocrStatus,
           sourceApp: command.sourceApp,
           metadata: command.metadata,
           capturedAt: command.capturedAt,
@@ -113,8 +114,10 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
       };
 
       const activeClipsAfterCapture = [
-        { id: command.clipId, pinned: false, deletedAt: null },
-        ...readModel.clips.filter((clip) => clip.deletedAt === null),
+        { id: command.clipId, pinned: false, deletedAt: null, imageAssetId: command.imageAssetId ?? null },
+        ...readModel.clips
+          .filter((clip) => clip.deletedAt === null)
+          .map((clip) => ({ id: clip.id, pinned: clip.pinned, deletedAt: clip.deletedAt, imageAssetId: clip.imageAssetId })),
       ];
       const overflowCount = Math.max(
         0,
@@ -142,6 +145,7 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           payload: {
             clipId: clip.id,
             deletedAt: command.capturedAt,
+            imageAssetId: clip.imageAssetId,
           },
         })),
       ];
@@ -188,7 +192,7 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
     }
 
     case "clip.delete": {
-      yield* requireClip({ readModel, command, clipId: command.clipId });
+      const clip = yield* requireClip({ readModel, command, clipId: command.clipId });
       const occurredAt = nowIso();
       return {
         ...withEventBase({
@@ -198,7 +202,11 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           commandId: command.commandId,
         }),
         type: "clip.deleted",
-        payload: { clipId: command.clipId, deletedAt: occurredAt },
+        payload: {
+          clipId: command.clipId,
+          deletedAt: occurredAt,
+          imageAssetId: clip.imageAssetId,
+        },
       };
     }
 
@@ -309,6 +317,30 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
         payload: {
           clipId: command.clipId,
           ocrText: normalizedOcrText,
+          updatedAt: command.updatedAt,
+        },
+      };
+    }
+
+    case "clip.updateOcrStatus": {
+      const clip = yield* requireClip({ readModel, command, clipId: command.clipId });
+      if (clip.contentType !== "image") {
+        return yield* new ClipboardCommandInvariantError({
+          commandType: command.type,
+          detail: `Clip '${command.clipId}' is not an image clip.`,
+        });
+      }
+      return {
+        ...withEventBase({
+          aggregateKind: "clip",
+          aggregateId: command.clipId,
+          occurredAt: command.updatedAt,
+          commandId: command.commandId,
+        }),
+        type: "clip.ocrStatusUpdated",
+        payload: {
+          clipId: command.clipId,
+          ocrStatus: command.ocrStatus,
           updatedAt: command.updatedAt,
         },
       };

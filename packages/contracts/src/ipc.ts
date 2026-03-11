@@ -40,6 +40,15 @@ export interface ClipboardDesktopBridge {
 
   /** Subscribe to tray menu clip selections */
   readonly onTrayClipSelected: (listener: (clipId: string) => void) => () => void;
+
+  /** Save an image clip to a user-chosen location */
+  readonly saveImageAs: (imageAssetPath: string) => Promise<boolean>;
+
+  /** Reveal an image clip's file in the system file manager */
+  readonly revealImageInFinder: (imageAssetPath: string) => Promise<boolean>;
+
+  /** Retry OCR extraction for a specific image clip */
+  readonly retryOcr: (clipId: string, imageAssetPath: string) => Promise<boolean>;
 }
 
 export interface ContextMenuItem {
@@ -62,4 +71,7 @@ export const IPC_CHANNELS = {
   menuAction: "desktop:menu-action",
   globalShortcut: "desktop:global-shortcut",
   trayClipSelected: "tray:clip-selected",
+  saveImageAs: "desktop:save-image-as",
+  revealImageInFinder: "desktop:reveal-image-in-finder",
+  retryOcr: "desktop:retry-ocr",
 } as const;

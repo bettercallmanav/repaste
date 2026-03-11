@@ -99,19 +99,26 @@ export function HighlightText({
 export function getClipSearchMatchMeta(clip: Clip, query: string): {
   readonly ocrOnlyMatch: boolean;
   readonly ocrSnippet: string | null;
+  readonly matchedFields: readonly string[];
 } {
-  const hasVisibleTextMatch = [
-    clip.content,
-    clip.preview,
-    clip.tags.join(" "),
-    clip.sourceApp ?? "",
-  ].some((value) => matchesText(value, query));
+  if (!query || query.trim().length === 0) {
+    return { ocrOnlyMatch: false, ocrSnippet: null, matchedFields: [] };
+  }
+
+  const fields: string[] = [];
+  if (matchesText(clip.content, query) || matchesText(clip.preview, query)) fields.push("content");
+  if (matchesText(clip.tags.join(" "), query)) fields.push("tag");
+  if (matchesText(clip.sourceApp, query)) fields.push("sourceApp");
   const hasOcrMatch = matchesText(clip.ocrText, query);
+  if (hasOcrMatch) fields.push("ocrText");
+
+  const hasVisibleTextMatch = fields.some((f) => f !== "ocrText");
 
   return {
     ocrOnlyMatch: hasOcrMatch && !hasVisibleTextMatch,
     ocrSnippet: hasOcrMatch && clip.ocrText
       ? getSearchSnippet(clip.ocrText, query, 160)
       : null,
+    matchedFields: fields,
   };
 }

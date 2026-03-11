@@ -119,6 +119,8 @@ export class ClipboardMonitor {
     const now = new Date().toISOString();
     const clipId = crypto.randomUUID();
 
+    const ocrAvailable = this.ocrProvider?.isAvailable ?? false;
+
     const command = {
       commandId: crypto.randomUUID(),
       type: "clip.capture",
@@ -134,6 +136,7 @@ export class ClipboardMonitor {
       imageHeight: height,
       imageMimeType,
       ocrText: null,
+      ocrStatus: imageAssetPath && ocrAvailable ? "pending" as const : "skipped" as const,
       sourceApp: null,
       metadata: {
         charCount: 0,
@@ -147,25 +150,42 @@ export class ClipboardMonitor {
 
     await Promise.resolve(handler(command));
 
-    if (!imageAssetPath || !this.ocrProvider) {
+    if (!imageAssetPath || !this.ocrProvider || !ocrAvailable) {
       return;
     }
 
     try {
       const ocrText = await this.ocrProvider.extractText(imageAssetPath);
-      if (!ocrText) {
-        return;
+      if (ocrText) {
+        await Promise.resolve(handler({
+          commandId: crypto.randomUUID(),
+          type: "clip.updateOcr",
+          clipId,
+          ocrText,
+          updatedAt: new Date().toISOString(),
+        } as ClipboardCommand));
+      } else {
+        await Promise.resolve(handler({
+          commandId: crypto.randomUUID(),
+          type: "clip.updateOcrStatus",
+          clipId,
+          ocrStatus: "failed",
+          updatedAt: new Date().toISOString(),
+        } as ClipboardCommand));
       }
-
-      await Promise.resolve(handler({
-        commandId: crypto.randomUUID(),
-        type: "clip.updateOcr",
-        clipId,
-        ocrText,
-        updatedAt: new Date().toISOString(),
-      } as ClipboardCommand));
     } catch {
-      // OCR is best-effort. Failed extraction should not block capture.
+      // OCR is best-effort — dispatch failed status but don't crash.
+      try {
+        await Promise.resolve(handler({
+          commandId: crypto.randomUUID(),
+          type: "clip.updateOcrStatus",
+          clipId,
+          ocrStatus: "failed",
+          updatedAt: new Date().toISOString(),
+        } as ClipboardCommand));
+      } catch {
+        // Completely silenced — handler may be gone if monitor stopped.
+      }
     }
   }
 

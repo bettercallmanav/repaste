@@ -13,6 +13,7 @@ import {
   ClipMergedPayload,
   ClipPastedPayload,
   ClipOcrUpdatedPayload,
+  ClipOcrStatusUpdatedPayload,
   SnippetCreatedPayload,
   SnippetUpdatedPayload,
   SnippetDeletedPayload,
@@ -104,6 +105,7 @@ export function projectEvent(
             imageHeight: p.imageHeight ?? null,
             imageMimeType: p.imageMimeType ?? null,
             ocrText: p.ocrText ?? null,
+            ocrStatus: p.ocrStatus ?? null,
             pinned: false,
             tags: [],
             category: p.category,
@@ -196,6 +198,7 @@ export function projectEvent(
             imageHeight: null,
             imageMimeType: null,
             ocrText: null,
+            ocrStatus: null,
             pinned: false,
             tags: [],
             category: "text",
@@ -236,7 +239,15 @@ export function projectEvent(
       return decodeForEvent(ClipOcrUpdatedPayload, event.payload, event.type, "payload").pipe(
         Effect.map((p) => ({
           ...nextBase,
-          clips: updateClip(nextBase.clips, p.clipId, { ocrText: p.ocrText }),
+          clips: updateClip(nextBase.clips, p.clipId, { ocrText: p.ocrText, ocrStatus: "ready" }),
+        })),
+      );
+
+    case "clip.ocrStatusUpdated":
+      return decodeForEvent(ClipOcrStatusUpdatedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((p) => ({
+          ...nextBase,
+          clips: updateClip(nextBase.clips, p.clipId, { ocrStatus: p.ocrStatus }),
         })),
       );
 

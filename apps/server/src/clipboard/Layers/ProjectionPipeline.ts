@@ -49,6 +49,7 @@ const makeProjectionPipeline = Effect.gen(function* () {
           imageHeight: p.imageHeight ?? null,
           imageMimeType: p.imageMimeType ?? null,
           ocrText: p.ocrText ?? null,
+          ocrStatus: p.ocrStatus ?? null,
           pinned: 0,
           tagsJson: "[]",
           category: p.category,
@@ -107,6 +108,7 @@ const makeProjectionPipeline = Effect.gen(function* () {
           imageHeight: null,
           imageMimeType: null,
           ocrText: null,
+          ocrStatus: null,
           pinned: 0,
           tagsJson: "[]",
           category: "text",
@@ -124,6 +126,10 @@ const makeProjectionPipeline = Effect.gen(function* () {
       case "clip.ocrUpdated": {
         const p = event.payload as any;
         return clipRepo.updateOcrText(p.clipId, p.ocrText);
+      }
+      case "clip.ocrStatusUpdated": {
+        const p = event.payload as any;
+        return clipRepo.updateOcrStatus(p.clipId, p.ocrStatus);
       }
       default:
         return Effect.void;

@@ -39,6 +39,12 @@ const bridge: ClipboardDesktopBridge = {
     ipcRenderer.on(IPC_CHANNELS.trayClipSelected, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.trayClipSelected, handler);
   },
+
+  saveImageAs: (imageAssetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.saveImageAs, imageAssetPath),
+
+  revealImageInFinder: (imageAssetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.revealImageInFinder, imageAssetPath),
+
+  retryOcr: (clipId: string, imageAssetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.retryOcr, clipId, imageAssetPath),
 };
 
 contextBridge.exposeInMainWorld("desktopBridge", bridge);

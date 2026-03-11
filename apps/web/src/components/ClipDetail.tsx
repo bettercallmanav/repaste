@@ -1,4 +1,4 @@
-import { Copy, Pin, Trash2, X } from "lucide-react";
+import { Copy, Download, FolderOpen, Pin, RefreshCw, Trash2, X } from "lucide-react";
 import type { Clip } from "@clipm/contracts";
 import { useClipboardStore } from "../store.ts";
 import { TagInput } from "./TagInput.tsx";
@@ -20,7 +20,7 @@ function getImageDisplaySrc(clip: Clip): string | null {
 }
 
 export function ClipDetail() {
-  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip, searchResolvedQuery } =
+  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip, saveImageAs, revealImageInFinder, retryOcr, searchResolvedQuery } =
     useClipboardStore();
 
   const clip = clips.find((c: Clip) => c.id === selectedClipId);
@@ -73,6 +73,7 @@ export function ClipDetail() {
             <DetailField label="Dimensions" value={`${clip.imageWidth} x ${clip.imageHeight}`} />
           )}
           {clip.imageMimeType && <DetailField label="Image type" value={clip.imageMimeType} />}
+          {clip.ocrStatus && <DetailField label="OCR" value={clip.ocrStatus} />}
           {clip.metadata.charCount > 0 && (
             <DetailField label="Characters" value={String(clip.metadata.charCount)} />
           )}
@@ -98,7 +99,7 @@ export function ClipDetail() {
       </div>
 
       {/* Actions */}
-      <div className="ui-divider flex gap-2 border-t p-3">
+      <div className="ui-divider flex flex-wrap gap-2 border-t p-3">
         <button
           onClick={() => { void copyClip(clip.id); }}
           className="ui-btn-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
@@ -106,6 +107,33 @@ export function ClipDetail() {
           <Copy className="size-3.5" />
           Copy
         </button>
+        {clip.contentType === "image" && clip.imageAssetPath && (
+          <>
+            <button
+              onClick={() => { void saveImageAs(clip.id); }}
+              className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+            >
+              <Download className="size-3.5" />
+              Save
+            </button>
+            <button
+              onClick={() => { void revealImageInFinder(clip.id); }}
+              className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+            >
+              <FolderOpen className="size-3.5" />
+              Reveal
+            </button>
+            {(clip.ocrStatus === "failed" || clip.ocrStatus === "skipped" || clip.ocrStatus === null) && (
+              <button
+                onClick={() => { void retryOcr(clip.id); }}
+                className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+              >
+                <RefreshCw className="size-3.5" />
+                Retry OCR
+              </button>
+            )}
+          </>
+        )}
         <button
           onClick={() => {
             if (clip.pinned) { unpinClip(clip.id); } else { pinClip(clip.id); }

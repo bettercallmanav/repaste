@@ -17,6 +17,7 @@ export const ProjectionClipRow = Schema.Struct({
   imageHeight: Schema.NullOr(NonNegativeInt),
   imageMimeType: Schema.NullOr(Schema.String),
   ocrText: Schema.NullOr(Schema.String),
+  ocrStatus: Schema.NullOr(Schema.String),
   pinned: Schema.Number,
   tagsJson: UnknownFromJsonString,
   category: Schema.String,
@@ -59,6 +60,10 @@ export interface ProjectionClipRepositoryShape {
   readonly updateOcrText: (
     id: ClipId,
     ocrText: string,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
+  readonly updateOcrStatus: (
+    id: ClipId,
+    ocrStatus: string,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
   readonly incrementPasteCount: (id: ClipId) => Effect.Effect<void, ProjectionRepositoryError>;
   readonly softDelete: (

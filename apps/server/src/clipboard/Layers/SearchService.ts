@@ -23,6 +23,7 @@ function rowToClip(row: ProjectionClipRow): Clip {
     imageHeight: row.imageHeight,
     imageMimeType: row.imageMimeType,
     ocrText: row.ocrText,
+    ocrStatus: row.ocrStatus as any,
     pinned: row.pinned === 1,
     tags,
     category: row.category,

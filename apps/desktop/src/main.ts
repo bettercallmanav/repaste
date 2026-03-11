@@ -1,5 +1,6 @@
-import { app, clipboard, ipcMain, shell, Menu, nativeImage, nativeTheme } from "electron";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { app, clipboard, dialog, ipcMain, shell, Menu, nativeImage, nativeTheme } from "electron";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
@@ -189,6 +190,7 @@ function connectToServer(): void {
     // Start clipboard monitoring once connected
     clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR, ocrProvider });
     refreshTrayRecentClips();
+    void backfillOcr();
   });
 
   serverWs.on("message", (raw) => {
@@ -254,6 +256,23 @@ function sendServerRequest<T>(body: { _tag: string; [key: string]: unknown }): P
   });
 }
 
+async function cleanupImageAsset(imageAssetId: string): Promise<void> {
+  const filePath = path.join(IMAGE_ASSET_DIR, `${imageAssetId}.png`);
+  if (!existsSync(filePath)) return;
+
+  // Guard: don't delete if another active clip shares this image asset (SHA1 dedup)
+  try {
+    const snapshot = await sendServerRequest<ClipboardReadModel>({ _tag: "clipboard.getSnapshot" });
+    const otherClipUsesAsset = snapshot.clips.some(
+      (clip) => clip.imageAssetId === imageAssetId && clip.deletedAt === null,
+    );
+    if (otherClipUsesAsset) return;
+    await unlink(filePath);
+  } catch {
+    // Best-effort cleanup — don't crash on failure
+  }
+}
+
 function handleServerMessage(raw: WebSocket.RawData): void {
   const text = (() => {
     if (typeof raw === "string") return raw;
@@ -272,6 +291,13 @@ function handleServerMessage(raw: WebSocket.RawData): void {
   if (typeof parsed !== "object" || parsed === null) return;
 
   if ("channel" in parsed && parsed.channel === WS_CHANNELS.domainEvent) {
+    const data = "data" in parsed ? parsed.data : undefined;
+    if (data && typeof data === "object" && "type" in data && data.type === "clip.deleted") {
+      const payload = "payload" in data ? data.payload : undefined;
+      if (payload && typeof payload === "object" && "imageAssetId" in payload && typeof payload.imageAssetId === "string") {
+        void cleanupImageAsset(payload.imageAssetId);
+      }
+    }
     refreshTrayRecentClips();
     return;
   }
@@ -291,6 +317,104 @@ function handleServerMessage(raw: WebSocket.RawData): void {
   }
 
   pending.resolve("result" in parsed ? parsed.result : undefined);
+}
+
+async function backfillOcr(): Promise<void> {
+  if (!ocrProvider.isAvailable) return;
+
+  try {
+    const snapshot = await sendServerRequest<ClipboardReadModel>({ _tag: "clipboard.getSnapshot" });
+    const legacyImageClips = snapshot.clips.filter(
+      (clip) =>
+        clip.contentType === "image" &&
+        clip.imageAssetPath &&
+        clip.ocrStatus === null &&
+        clip.deletedAt === null,
+    );
+
+    for (const clip of legacyImageClips) {
+      if (!serverWs || serverWs.readyState !== WebSocket.OPEN) break;
+
+      try {
+        const ocrText = await ocrProvider.extractText(clip.imageAssetPath!);
+        if (ocrText) {
+          dispatchCommand({
+            commandId: crypto.randomUUID(),
+            type: "clip.updateOcr",
+            clipId: clip.id,
+            ocrText,
+            updatedAt: new Date().toISOString(),
+          } as ClipboardCommand);
+        } else {
+          dispatchCommand({
+            commandId: crypto.randomUUID(),
+            type: "clip.updateOcrStatus",
+            clipId: clip.id,
+            ocrStatus: "failed",
+            updatedAt: new Date().toISOString(),
+          } as ClipboardCommand);
+        }
+      } catch {
+        dispatchCommand({
+          commandId: crypto.randomUUID(),
+          type: "clip.updateOcrStatus",
+          clipId: clip.id,
+          ocrStatus: "failed",
+          updatedAt: new Date().toISOString(),
+        } as ClipboardCommand);
+      }
+    }
+
+    if (legacyImageClips.length > 0) {
+      console.log(`[ocr-backfill] Processed ${legacyImageClips.length} legacy image clips`);
+    }
+  } catch (err) {
+    console.error("[ocr-backfill] Failed to backfill OCR:", err);
+  }
+}
+
+async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<boolean> {
+  if (!ocrProvider.isAvailable || !existsSync(imageAssetPath)) return false;
+
+  // Set pending status first
+  dispatchCommand({
+    commandId: crypto.randomUUID(),
+    type: "clip.updateOcrStatus",
+    clipId,
+    ocrStatus: "pending",
+    updatedAt: new Date().toISOString(),
+  } as ClipboardCommand);
+
+  try {
+    const ocrText = await ocrProvider.extractText(imageAssetPath);
+    if (ocrText) {
+      dispatchCommand({
+        commandId: crypto.randomUUID(),
+        type: "clip.updateOcr",
+        clipId,
+        ocrText,
+        updatedAt: new Date().toISOString(),
+      } as ClipboardCommand);
+      return true;
+    }
+    dispatchCommand({
+      commandId: crypto.randomUUID(),
+      type: "clip.updateOcrStatus",
+      clipId,
+      ocrStatus: "failed",
+      updatedAt: new Date().toISOString(),
+    } as ClipboardCommand);
+    return false;
+  } catch {
+    dispatchCommand({
+      commandId: crypto.randomUUID(),
+      type: "clip.updateOcrStatus",
+      clipId,
+      ocrStatus: "failed",
+      updatedAt: new Date().toISOString(),
+    } as ClipboardCommand);
+    return false;
+  }
 }
 
 function refreshTrayRecentClips(): void {
@@ -393,6 +517,34 @@ function registerIpcHandlers(): void {
         callback: () => resolve(null),
       });
     });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.saveImageAs, async (_event, imagePath: unknown) => {
+    if (typeof imagePath !== "string" || !existsSync(imagePath)) return false;
+    try {
+      const ext = path.extname(imagePath).slice(1) || "png";
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: path.basename(imagePath),
+        filters: [{ name: "Images", extensions: [ext] }],
+      });
+      if (canceled || !filePath) return false;
+      const { copyFile } = await import("node:fs/promises");
+      await copyFile(imagePath, filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.revealImageInFinder, (_event, imagePath: unknown) => {
+    if (typeof imagePath !== "string" || !existsSync(imagePath)) return false;
+    shell.showItemInFolder(imagePath);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.retryOcr, async (_event, clipId: unknown, imageAssetPath: unknown) => {
+    if (typeof clipId !== "string" || typeof imageAssetPath !== "string") return false;
+    return runOcrForClip(clipId, imageAssetPath);
   });
 }
 
