@@ -321,7 +321,9 @@ export const AppSettings = Schema.Struct({
   globalShortcut: Schema.String,
   showInMenuBar: Schema.Boolean,
   startAtLogin: Schema.Boolean,
+  closeToTray: Schema.Boolean,
   deduplicateConsecutive: Schema.Boolean,
+  enableOcr: Schema.Boolean,
   ignoredApps: Schema.Array(Schema.String),
   theme: Schema.Literals(["system", "light", "dark"]),
 });
@@ -353,7 +355,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   globalShortcut: "CmdOrCtrl+Shift+V",
   showInMenuBar: true,
   startAtLogin: false,
+  closeToTray: true,
   deduplicateConsecutive: true,
+  enableOcr: true,
   ignoredApps: [],
   theme: "system",
 };

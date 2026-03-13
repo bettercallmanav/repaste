@@ -17,6 +17,7 @@ export interface WindowManagerOptions {
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
   private allowWindowClose = false;
+  private closeToTray = true;
 
   create(options: WindowManagerOptions): BrowserWindow {
     const windowOptions: BrowserWindowConstructorOptions = {
@@ -44,6 +45,10 @@ export class WindowManager {
       }
 
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        if (!this.closeToTray) {
+          this.allowWindowClose = true;
+          return;
+        }
         e.preventDefault();
         this.mainWindow.hide();
       }
@@ -103,5 +108,9 @@ export class WindowManager {
 
   prepareForQuit(): void {
     this.allowWindowClose = true;
+  }
+
+  setCloseToTray(enabled: boolean): void {
+    this.closeToTray = enabled;
   }
 }

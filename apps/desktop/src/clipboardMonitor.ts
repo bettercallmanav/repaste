@@ -48,11 +48,13 @@ export class ClipboardMonitor {
   private handler: CaptureHandler | null = null;
   private imageAssetDir: string | null = null;
   private ocrProvider: OcrProvider | null = null;
+  private ocrEnabled = true;
 
   start(handler: CaptureHandler, options: ClipboardMonitorOptions): void {
     this.handler = handler;
     this.imageAssetDir = options.imageAssetDir;
     this.ocrProvider = options.ocrProvider;
+    this.ocrEnabled = true;
     mkdirSync(this.imageAssetDir, { recursive: true });
 
     // Seed with current clipboard content so we don't capture on launch
@@ -69,6 +71,11 @@ export class ClipboardMonitor {
     this.handler = null;
     this.imageAssetDir = null;
     this.ocrProvider = null;
+    this.ocrEnabled = true;
+  }
+
+  setOcrEnabled(enabled: boolean): void {
+    this.ocrEnabled = enabled;
   }
 
   private poll(): void {
@@ -119,7 +126,7 @@ export class ClipboardMonitor {
     const now = new Date().toISOString();
     const clipId = crypto.randomUUID();
 
-    const ocrAvailable = this.ocrProvider?.isAvailable ?? false;
+    const ocrAvailable = this.ocrEnabled && (this.ocrProvider?.isAvailable ?? false);
 
     const command = {
       commandId: crypto.randomUUID(),

@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { Effect, Layer } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { WS_CHANNELS } from "@clipm/contracts";
+import { DEFAULT_SETTINGS, WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardCommand, ClipboardReadModel } from "@clipm/contracts";
 import { IPC_CHANNELS } from "@clipm/contracts/ipc";
-import type { AppearanceTheme } from "@clipm/contracts/ipc";
+import type { AppearanceTheme, DesktopPreferences } from "@clipm/contracts/ipc";
 import { makeServerProgram, makeRuntimeLayer } from "@clipm/server/main";
 
 import { WindowManager } from "./windowManager.ts";
@@ -47,6 +47,7 @@ const AUTH_TOKEN = crypto.randomUUID();
 const STATE_DIR = path.join(app.getPath("userData"), "data");
 const IMAGE_ASSET_DIR = path.join(STATE_DIR, "images");
 const APPEARANCE_PATH = path.join(app.getPath("userData"), "appearance.json");
+const DESKTOP_PREFERENCES_PATH = path.join(app.getPath("userData"), "desktop-preferences.json");
 const WS_URL = `ws://${SERVER_HOST}:${SERVER_PORT}?token=${AUTH_TOKEN}`;
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -61,6 +62,11 @@ let serverWs: WebSocket | null = null;
 let isQuitting = false;
 let nextServerRequestId = 1;
 let themePreference: AppearanceTheme = "system";
+let desktopPreferences: DesktopPreferences = {
+  startAtLogin: DEFAULT_SETTINGS.startAtLogin,
+  closeToTray: DEFAULT_SETTINGS.closeToTray,
+  enableOcr: DEFAULT_SETTINGS.enableOcr,
+};
 
 const pendingServerRequests = new Map<
   string,
@@ -94,6 +100,38 @@ function saveThemePreference(theme: AppearanceTheme): void {
   writeFileSync(APPEARANCE_PATH, JSON.stringify({ theme }), "utf8");
 }
 
+function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
+  const record = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  return {
+    startAtLogin: typeof record.startAtLogin === "boolean"
+      ? record.startAtLogin
+      : DEFAULT_SETTINGS.startAtLogin,
+    closeToTray: typeof record.closeToTray === "boolean"
+      ? record.closeToTray
+      : DEFAULT_SETTINGS.closeToTray,
+    enableOcr: typeof record.enableOcr === "boolean"
+      ? record.enableOcr
+      : DEFAULT_SETTINGS.enableOcr,
+  };
+}
+
+function loadDesktopPreferences(): DesktopPreferences {
+  try {
+    const raw = readFileSync(DESKTOP_PREFERENCES_PATH, "utf8");
+    return normalizeDesktopPreferences(JSON.parse(raw));
+  } catch {
+    return {
+      startAtLogin: DEFAULT_SETTINGS.startAtLogin,
+      closeToTray: DEFAULT_SETTINGS.closeToTray,
+      enableOcr: DEFAULT_SETTINGS.enableOcr,
+    };
+  }
+}
+
+function saveDesktopPreferences(preferences: DesktopPreferences): void {
+  writeFileSync(DESKTOP_PREFERENCES_PATH, JSON.stringify(preferences), "utf8");
+}
+
 function resolveThemeMode(theme: AppearanceTheme): "light" | "dark" {
   if (theme === "light" || theme === "dark") return theme;
   return nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -116,6 +154,32 @@ function applyThemePreference(theme: AppearanceTheme): AppearanceTheme {
   nativeTheme.themeSource = normalized;
   syncWindowBackground(normalized);
   return normalized;
+}
+
+function applyDesktopPreferences(
+  next: Partial<DesktopPreferences>,
+): DesktopPreferences {
+  desktopPreferences = normalizeDesktopPreferences({
+    ...desktopPreferences,
+    ...next,
+  });
+
+  windowManager.setCloseToTray(desktopPreferences.closeToTray);
+  app.setLoginItemSettings({
+    openAtLogin: desktopPreferences.startAtLogin,
+    openAsHidden: desktopPreferences.startAtLogin,
+  });
+
+  return desktopPreferences;
+}
+
+function syncSettingsToServer(settings: Partial<ClipboardReadModel["settings"]>): void {
+  dispatchCommand({
+    commandId: crypto.randomUUID(),
+    type: "settings.update",
+    settings,
+    updatedAt: new Date().toISOString(),
+  } as ClipboardCommand);
 }
 
 // ─── In-process Server ──────────────────────────────────────────────────────
@@ -189,6 +253,13 @@ function connectToServer(): void {
     console.log("Connected to server via WebSocket");
     // Start clipboard monitoring once connected
     clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR, ocrProvider });
+    clipboardMonitor.setOcrEnabled(desktopPreferences.enableOcr);
+    syncSettingsToServer({
+      theme: themePreference,
+      startAtLogin: desktopPreferences.startAtLogin,
+      closeToTray: desktopPreferences.closeToTray,
+      enableOcr: desktopPreferences.enableOcr,
+    });
     refreshTrayRecentClips();
     void backfillOcr();
   });
@@ -320,7 +391,7 @@ function handleServerMessage(raw: WebSocket.RawData): void {
 }
 
 async function backfillOcr(): Promise<void> {
-  if (!ocrProvider.isAvailable) return;
+  if (!ocrProvider.isAvailable || !desktopPreferences.enableOcr) return;
 
   try {
     const snapshot = await sendServerRequest<ClipboardReadModel>({ _tag: "clipboard.getSnapshot" });
@@ -374,7 +445,7 @@ async function backfillOcr(): Promise<void> {
 }
 
 async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<boolean> {
-  if (!ocrProvider.isAvailable || !existsSync(imageAssetPath)) return false;
+  if (!desktopPreferences.enableOcr || !ocrProvider.isAvailable || !existsSync(imageAssetPath)) return false;
 
   // Set pending status first
   dispatchCommand({
@@ -486,7 +557,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.setThemePreference, (_event, theme: unknown) => {
     const nextTheme = applyThemePreference(normalizeThemePreference(theme));
     saveThemePreference(nextTheme);
+    syncSettingsToServer({ theme: nextTheme });
     return nextTheme;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.getDesktopPreferences, () => desktopPreferences);
+
+  ipcMain.handle(IPC_CHANNELS.setDesktopPreferences, (_event, preferences: unknown) => {
+    const nextPreferences = applyDesktopPreferences(normalizeDesktopPreferences({
+      ...desktopPreferences,
+      ...(typeof preferences === "object" && preferences !== null ? preferences as Record<string, unknown> : {}),
+    }));
+    saveDesktopPreferences(nextPreferences);
+    clipboardMonitor.setOcrEnabled(nextPreferences.enableOcr);
+    syncSettingsToServer({
+      startAtLogin: nextPreferences.startAtLogin,
+      closeToTray: nextPreferences.closeToTray,
+      enableOcr: nextPreferences.enableOcr,
+    });
+    return nextPreferences;
   });
 
   ipcMain.handle(IPC_CHANNELS.contextMenu, (_event, items: unknown) => {
@@ -617,17 +706,13 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    desktopPreferences = applyDesktopPreferences(loadDesktopPreferences());
     themePreference = applyThemePreference(loadThemePreference());
     nativeTheme.on("updated", () => {
       if (themePreference === "system") {
         syncWindowBackground(themePreference);
       }
     });
-
-    // Enable start at login so the app survives reboots
-    if (app.isPackaged) {
-      app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
-    }
 
     // Set WebSocket URL env for the preload script
     process.env.CLIPM_DESKTOP_WS_URL = WS_URL;
@@ -642,6 +727,7 @@ if (!gotLock) {
       webDistPath: WEB_DIST_PATH,
       backgroundColor: getWindowBackgroundColor(themePreference),
     });
+    windowManager.setCloseToTray(desktopPreferences.closeToTray);
 
     // Setup tray, shortcuts, menu
     trayManager.create(mainWindow, BUILD_RESOURCES_PATH);

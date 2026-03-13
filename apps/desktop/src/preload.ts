@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "@clipm/contracts/ipc";
-import type { AppearanceTheme, ClipboardDesktopBridge, ContextMenuItem } from "@clipm/contracts/ipc";
+import type {
+  AppearanceTheme,
+  ClipboardDesktopBridge,
+  ContextMenuItem,
+  DesktopPreferences,
+} from "@clipm/contracts/ipc";
 
 const bridge: ClipboardDesktopBridge = {
   getWsUrl: () => process.env.CLIPM_DESKTOP_WS_URL ?? null,
@@ -21,6 +26,11 @@ const bridge: ClipboardDesktopBridge = {
   getThemePreference: () => ipcRenderer.invoke(IPC_CHANNELS.getThemePreference),
 
   setThemePreference: (theme: AppearanceTheme) => ipcRenderer.invoke(IPC_CHANNELS.setThemePreference, theme),
+
+  getDesktopPreferences: () => ipcRenderer.invoke(IPC_CHANNELS.getDesktopPreferences),
+
+  setDesktopPreferences: (preferences: Partial<DesktopPreferences>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setDesktopPreferences, preferences),
 
   onMenuAction: (listener: (action: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, action: string) => listener(action);

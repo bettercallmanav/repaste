@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { Clip, ClipSearchFilters, ClipboardCommand } from "@clipm/contracts";
+import { DEFAULT_SETTINGS } from "@clipm/contracts";
+import type { AppSettings, Clip, ClipSearchFilters, ClipboardCommand } from "@clipm/contracts";
 import { WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { api } from "./api.ts";
@@ -45,6 +46,7 @@ function getSearchRequestKey(query: string, filters: ClipSearchFilters | undefin
 interface ClipboardStore {
   // State
   clips: readonly Clip[];
+  settings: AppSettings;
   knownTags: readonly string[];
   searchQuery: string;
   searchFilters: ClipSearchFilters;
@@ -75,6 +77,7 @@ interface ClipboardStore {
   revealImageInFinder: (clipId: string) => Promise<void>;
   retryOcr: (clipId: string) => Promise<void>;
   mergeClips: (clipIds: readonly string[], separator: string) => Promise<void>;
+  updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
 }
 
 function getDesktopBridge(): ClipboardDesktopBridge | undefined {
@@ -172,6 +175,7 @@ async function refreshSnapshot(
   const snapshot = await api.getSnapshot();
   set({
     clips: snapshot.clips,
+    settings: snapshot.settings,
     knownTags: snapshot.knownTags,
   });
 
@@ -180,6 +184,7 @@ async function refreshSnapshot(
 
 export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   clips: [],
+  settings: DEFAULT_SETTINGS,
   knownTags: [],
   searchQuery: "",
   searchFilters: {},
@@ -346,5 +351,14 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
       capturedAt: new Date().toISOString(),
     } as ClipboardCommand);
     set({ selectedClipIds: [] });
+  },
+
+  updateSettings: async (settings) => {
+    await api.dispatch({
+      commandId: crypto.randomUUID(),
+      type: "settings.update",
+      settings,
+      updatedAt: new Date().toISOString(),
+    } as ClipboardCommand);
   },
 }));

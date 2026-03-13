@@ -2,6 +2,12 @@
 
 export type AppearanceTheme = "system" | "light" | "dark";
 
+export interface DesktopPreferences {
+  readonly startAtLogin: boolean;
+  readonly closeToTray: boolean;
+  readonly enableOcr: boolean;
+}
+
 export interface ClipboardDesktopBridge {
   /** WebSocket URL to connect to the backend server */
   readonly getWsUrl: () => string | null;
@@ -31,6 +37,14 @@ export interface ClipboardDesktopBridge {
 
   /** Persist and apply the desktop appearance preference */
   readonly setThemePreference: (theme: AppearanceTheme) => Promise<AppearanceTheme>;
+
+  /** Read persisted desktop-only preferences */
+  readonly getDesktopPreferences: () => Promise<DesktopPreferences>;
+
+  /** Persist and apply desktop-only preferences */
+  readonly setDesktopPreferences: (
+    preferences: Partial<DesktopPreferences>,
+  ) => Promise<DesktopPreferences>;
 
   /** Subscribe to menu bar actions */
   readonly onMenuAction: (listener: (action: string) => void) => () => void;
@@ -68,6 +82,8 @@ export const IPC_CHANNELS = {
   openExternal: "desktop:open-external",
   getThemePreference: "desktop:get-theme-preference",
   setThemePreference: "desktop:set-theme-preference",
+  getDesktopPreferences: "desktop:get-preferences",
+  setDesktopPreferences: "desktop:set-preferences",
   menuAction: "desktop:menu-action",
   globalShortcut: "desktop:global-shortcut",
   trayClipSelected: "tray:clip-selected",
