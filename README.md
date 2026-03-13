@@ -1,6 +1,6 @@
 # Repaste
 
-Repaste is a local-first clipboard manager built with Electron, React, Bun, and an Effect-based backend. It stores clipboard history on your machine, supports both text and image clips, and adds fast search, tags, snippets, tray access, and macOS OCR for image text.
+Repaste is a local-first clipboard manager built with Electron, React, Bun, and an Effect-based backend. It stores clipboard history on your machine, supports both text and image clips, and adds fast search, tags, tray access, and macOS OCR for image text.
 
 ## Features
 
@@ -10,7 +10,6 @@ Repaste is a local-first clipboard manager built with Electron, React, Bun, and 
 - Full-text clip search with filters
 - Search query syntax such as `type:image`, `tag:design`, `app:Chrome`, `from:2026-03-01`
 - Pinning, tagging, merging, and deleting clips
-- Snippet management
 - Tray integration and global window workflow
 - Light, dark, and system appearance modes
 
@@ -94,7 +93,7 @@ bun run dev:desktop
 
 ## Package The Desktop App
 
-Desktop packaging lives under [`/Users/manav/Desktop/clipboard-manager/apps/desktop`](./apps/desktop).
+Desktop packaging lives under [`./apps/desktop`](./apps/desktop).
 
 Build and package for macOS:
 
@@ -138,4 +137,4 @@ Clipboard events are captured on the desktop side, processed through an event-so
 
 ## License
 
-See [`LICENSE`](/Users/manav/Desktop/clipboard-manager/LICENSE).
+See [`LICENSE`](./LICENSE).

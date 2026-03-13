@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, Edit3, Save, X, Scissors } from "lucide-react";
 import type { Snippet } from "@clipm/contracts";
-import { useClipboardStore } from "../store.ts";
+import { useClipboardStore } from "../../apps/web/src/store.ts";
 
 function SnippetCard({ snippet }: { snippet: Snippet }) {
   const { updateSnippet, deleteSnippet } = useClipboardStore();

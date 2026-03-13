@@ -1,11 +1,9 @@
 import { create } from "zustand";
-import type { Clip, ClipSearchFilters, ClipboardCommand, Snippet } from "@clipm/contracts";
+import type { Clip, ClipSearchFilters, ClipboardCommand } from "@clipm/contracts";
 import { WS_CHANNELS } from "@clipm/contracts";
 import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { api } from "./api.ts";
 import { parseSearchQuery } from "./lib/searchQueryParser.ts";
-
-type ActiveView = "clips" | "snippets";
 
 let latestSearchRequestId = 0;
 let initPromise: Promise<void> | null = null;
@@ -47,7 +45,6 @@ function getSearchRequestKey(query: string, filters: ClipSearchFilters | undefin
 interface ClipboardStore {
   // State
   clips: readonly Clip[];
-  snippets: readonly Snippet[];
   knownTags: readonly string[];
   searchQuery: string;
   searchFilters: ClipSearchFilters;
@@ -56,7 +53,6 @@ interface ClipboardStore {
   searchLoading: boolean;
   selectedClipId: string | null;
   selectedClipIds: readonly string[];
-  activeView: ActiveView;
   loading: boolean;
 
   // Actions
@@ -68,7 +64,6 @@ interface ClipboardStore {
   selectClip: (id: string | null) => void;
   toggleClipSelection: (id: string) => void;
   clearSelection: () => void;
-  setActiveView: (view: ActiveView) => void;
   copyClip: (clipId: string) => Promise<void>;
   pinClip: (clipId: string) => Promise<void>;
   unpinClip: (clipId: string) => Promise<void>;
@@ -80,11 +75,6 @@ interface ClipboardStore {
   revealImageInFinder: (clipId: string) => Promise<void>;
   retryOcr: (clipId: string) => Promise<void>;
   mergeClips: (clipIds: readonly string[], separator: string) => Promise<void>;
-
-  // Snippet actions
-  createSnippet: (title: string, content: string, shortcut: string | null) => Promise<void>;
-  updateSnippet: (snippetId: string, updates: { title?: string; content?: string; shortcut?: string | null }) => Promise<void>;
-  deleteSnippet: (snippetId: string) => Promise<void>;
 }
 
 function getDesktopBridge(): ClipboardDesktopBridge | undefined {
@@ -182,7 +172,6 @@ async function refreshSnapshot(
   const snapshot = await api.getSnapshot();
   set({
     clips: snapshot.clips,
-    snippets: snapshot.snippets,
     knownTags: snapshot.knownTags,
   });
 
@@ -191,7 +180,6 @@ async function refreshSnapshot(
 
 export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   clips: [],
-  snippets: [],
   knownTags: [],
   searchQuery: "",
   searchFilters: {},
@@ -200,7 +188,6 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   searchLoading: false,
   selectedClipId: null,
   selectedClipIds: [],
-  activeView: "clips",
   loading: true,
 
   init: async () => {
@@ -261,8 +248,6 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   },
 
   clearSelection: () => set({ selectedClipIds: [] }),
-
-  setActiveView: (view) => set({ activeView: view }),
 
   copyClip: async (clipId) => {
     const clip = get().clips.find((currentClip) => currentClip.id === clipId);
@@ -361,35 +346,5 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
       capturedAt: new Date().toISOString(),
     } as ClipboardCommand);
     set({ selectedClipIds: [] });
-  },
-
-  createSnippet: async (title, content, shortcut) => {
-    await api.dispatch({
-      commandId: crypto.randomUUID(),
-      type: "snippet.create",
-      snippetId: crypto.randomUUID(),
-      title,
-      content,
-      shortcut,
-      createdAt: new Date().toISOString(),
-    } as ClipboardCommand);
-  },
-
-  updateSnippet: async (snippetId, updates) => {
-    await api.dispatch({
-      commandId: crypto.randomUUID(),
-      type: "snippet.update",
-      snippetId,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    } as ClipboardCommand);
-  },
-
-  deleteSnippet: async (snippetId) => {
-    await api.dispatch({
-      commandId: crypto.randomUUID(),
-      type: "snippet.delete",
-      snippetId,
-    } as ClipboardCommand);
   },
 }));

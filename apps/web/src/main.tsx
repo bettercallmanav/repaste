@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { Clipboard, Scissors, Settings } from "lucide-react";
+import { Clipboard, Settings } from "lucide-react";
 import type { ClipboardDesktopBridge } from "@clipm/contracts/ipc";
 import { useClipboardStore } from "./store.ts";
 import { SearchBar } from "./components/SearchBar.tsx";
 import { ClipList } from "./components/ClipList.tsx";
 import { ClipDetail } from "./components/ClipDetail.tsx";
 import { MergeBar } from "./components/MergeBar.tsx";
-import { SnippetManager } from "./components/SnippetManager.tsx";
 import { SettingsPanel } from "./components/Settings.tsx";
 import "./app.css";
 
@@ -16,7 +15,7 @@ type DesktopWindow = Window & {
 };
 
 function App() {
-  const { init, clips, snippets, selectedClipId, activeView, setActiveView } = useClipboardStore();
+  const { init, clips, selectedClipId } = useClipboardStore();
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -32,9 +31,8 @@ function App() {
       clearSearch();
       selectClip(clipId);
       setShowSettings(false);
-      setActiveView("clips");
     });
-  }, [setActiveView]);
+  }, []);
 
   return (
     <div className="ui-shell flex h-screen flex-col">
@@ -49,29 +47,15 @@ function App() {
         {/* View tabs */}
         <div className="ml-auto flex gap-1">
           <button
-            onClick={() => { setActiveView("clips"); setShowSettings(false); }}
+            onClick={() => setShowSettings(false)}
             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-              activeView === "clips" && !showSettings
+              !showSettings
                 ? "ui-tab-active"
                 : "ui-tab"
             }`}
           >
             <Clipboard className="size-3" />
             Clips
-          </button>
-          <button
-            onClick={() => { setActiveView("snippets"); setShowSettings(false); }}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-              activeView === "snippets" && !showSettings
-                ? "ui-tab-active"
-                : "ui-tab"
-            }`}
-          >
-            <Scissors className="size-3" />
-            Snippets
-            {snippets.length > 0 && (
-              <span className="ui-badge rounded-full px-1.5 text-xs">{snippets.length}</span>
-            )}
           </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -88,7 +72,7 @@ function App() {
 
       {showSettings ? (
         <SettingsPanel onClose={() => setShowSettings(false)} />
-      ) : activeView === "clips" ? (
+      ) : (
         <>
           {/* Search */}
           <div className="ui-divider border-b px-4 py-2">
@@ -110,8 +94,6 @@ function App() {
             )}
           </div>
         </>
-      ) : (
-        <SnippetManager />
       )}
     </div>
   );
