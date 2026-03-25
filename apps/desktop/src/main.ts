@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, shell, Menu, nativeImage, nativeTheme } from "electron";
+import { app, clipboard, dialog, ipcMain, shell, Menu, nativeImage, nativeTheme, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
@@ -60,11 +60,14 @@ const ocrProvider = createOcrProvider({ helperPath: OCR_HELPER_PATH });
 
 let serverWs: WebSocket | null = null;
 let isQuitting = false;
+let forceActualQuit = false;
 let nextServerRequestId = 1;
 let themePreference: AppearanceTheme = "system";
 let desktopPreferences: DesktopPreferences = {
+  backgroundRunning: DEFAULT_SETTINGS.backgroundRunning,
   startAtLogin: DEFAULT_SETTINGS.startAtLogin,
   closeToTray: DEFAULT_SETTINGS.closeToTray,
+  quitToBackground: DEFAULT_SETTINGS.quitToBackground,
   enableOcr: DEFAULT_SETTINGS.enableOcr,
 };
 
@@ -103,12 +106,18 @@ function saveThemePreference(theme: AppearanceTheme): void {
 function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
   const record = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
   return {
+    backgroundRunning: typeof record.backgroundRunning === "boolean"
+      ? record.backgroundRunning
+      : DEFAULT_SETTINGS.backgroundRunning,
     startAtLogin: typeof record.startAtLogin === "boolean"
       ? record.startAtLogin
       : DEFAULT_SETTINGS.startAtLogin,
     closeToTray: typeof record.closeToTray === "boolean"
       ? record.closeToTray
       : DEFAULT_SETTINGS.closeToTray,
+    quitToBackground: typeof record.quitToBackground === "boolean"
+      ? record.quitToBackground
+      : DEFAULT_SETTINGS.quitToBackground,
     enableOcr: typeof record.enableOcr === "boolean"
       ? record.enableOcr
       : DEFAULT_SETTINGS.enableOcr,
@@ -121,8 +130,10 @@ function loadDesktopPreferences(): DesktopPreferences {
     return normalizeDesktopPreferences(JSON.parse(raw));
   } catch {
     return {
+      backgroundRunning: DEFAULT_SETTINGS.backgroundRunning,
       startAtLogin: DEFAULT_SETTINGS.startAtLogin,
       closeToTray: DEFAULT_SETTINGS.closeToTray,
+      quitToBackground: DEFAULT_SETTINGS.quitToBackground,
       enableOcr: DEFAULT_SETTINGS.enableOcr,
     };
   }
@@ -164,10 +175,20 @@ function applyDesktopPreferences(
     ...next,
   });
 
-  windowManager.setCloseToTray(desktopPreferences.closeToTray);
+  if (!desktopPreferences.backgroundRunning) {
+    desktopPreferences = {
+      ...desktopPreferences,
+      closeToTray: false,
+      quitToBackground: false,
+    };
+  }
+
+  windowManager.setCloseToTray(
+    desktopPreferences.backgroundRunning && desktopPreferences.closeToTray,
+  );
   app.setLoginItemSettings({
     openAtLogin: desktopPreferences.startAtLogin,
-    openAsHidden: desktopPreferences.startAtLogin,
+    openAsHidden: desktopPreferences.startAtLogin && desktopPreferences.backgroundRunning,
   });
 
   return desktopPreferences;
@@ -180,6 +201,11 @@ function syncSettingsToServer(settings: Partial<ClipboardReadModel["settings"]>)
     settings,
     updatedAt: new Date().toISOString(),
   } as ClipboardCommand);
+}
+
+function quitFully(): void {
+  forceActualQuit = true;
+  app.quit();
 }
 
 // ─── In-process Server ──────────────────────────────────────────────────────
@@ -256,8 +282,10 @@ function connectToServer(): void {
     clipboardMonitor.setOcrEnabled(desktopPreferences.enableOcr);
     syncSettingsToServer({
       theme: themePreference,
+      backgroundRunning: desktopPreferences.backgroundRunning,
       startAtLogin: desktopPreferences.startAtLogin,
       closeToTray: desktopPreferences.closeToTray,
+      quitToBackground: desktopPreferences.quitToBackground,
       enableOcr: desktopPreferences.enableOcr,
     });
     refreshTrayRecentClips();
@@ -489,16 +517,12 @@ async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<bo
 }
 
 function refreshTrayRecentClips(): void {
-  const mainWindow = windowManager.getWindow();
-  if (!mainWindow) return;
-
   void sendServerRequest<ClipboardReadModel>({
     _tag: "clipboard.getSnapshot",
   })
     .then((snapshot) => {
       trayManager.updateRecentClips(
         snapshot.clips.map((clip) => ({ id: clip.id, preview: clip.preview })),
-        mainWindow,
       );
     })
     .catch((error) => {
@@ -564,15 +588,21 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getDesktopPreferences, () => desktopPreferences);
 
   ipcMain.handle(IPC_CHANNELS.setDesktopPreferences, (_event, preferences: unknown) => {
+    const wasOcrEnabled = desktopPreferences.enableOcr;
     const nextPreferences = applyDesktopPreferences(normalizeDesktopPreferences({
       ...desktopPreferences,
       ...(typeof preferences === "object" && preferences !== null ? preferences as Record<string, unknown> : {}),
     }));
     saveDesktopPreferences(nextPreferences);
     clipboardMonitor.setOcrEnabled(nextPreferences.enableOcr);
+    if (!wasOcrEnabled && nextPreferences.enableOcr) {
+      void backfillOcr();
+    }
     syncSettingsToServer({
+      backgroundRunning: nextPreferences.backgroundRunning,
       startAtLogin: nextPreferences.startAtLogin,
       closeToTray: nextPreferences.closeToTray,
+      quitToBackground: nextPreferences.quitToBackground,
       enableOcr: nextPreferences.enableOcr,
     });
     return nextPreferences;
@@ -689,6 +719,83 @@ function createAppMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+function sendTraySelection(mainWindow: BrowserWindow, clipId: string): void {
+  const send = () => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.trayClipSelected, clipId);
+    }
+  };
+
+  if (mainWindow.webContents.isLoadingMainFrame()) {
+    mainWindow.webContents.once("did-finish-load", send);
+    return;
+  }
+
+  send();
+}
+
+function createMainWindow(): BrowserWindow {
+  const mainWindow = windowManager.create({
+    preloadPath: PRELOAD_PATH,
+    webDistPath: WEB_DIST_PATH,
+    backgroundColor: getWindowBackgroundColor(themePreference),
+  });
+
+  windowManager.setCloseToTray(
+    desktopPreferences.backgroundRunning && desktopPreferences.closeToTray,
+  );
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+  });
+
+  mainWindow.on("closed", () => {
+    if (windowManager.getWindow() === mainWindow) {
+      windowManager.destroy();
+    }
+  });
+
+  return mainWindow;
+}
+
+function ensureMainWindowVisible(clipId?: string): BrowserWindow {
+  const existingWindow = windowManager.getWindow();
+  const mainWindow = !existingWindow || existingWindow.isDestroyed()
+    ? createMainWindow()
+    : existingWindow;
+
+  if (mainWindow.isDestroyed()) {
+    return createMainWindow();
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (clipId) {
+    sendTraySelection(mainWindow, clipId);
+  }
+
+  return mainWindow;
+}
+
+function toggleMainWindow(): void {
+  const mainWindow = windowManager.getWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    ensureMainWindowVisible();
+    return;
+  }
+
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 
 // Enforce single instance
@@ -697,12 +804,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    const mainWindow = windowManager.getWindow();
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    ensureMainWindowVisible();
   });
 
   app.whenReady().then(async () => {
@@ -722,29 +824,36 @@ if (!gotLock) {
     await waitForServer();
 
     // Create window only after server is accepting connections
-    const mainWindow = windowManager.create({
-      preloadPath: PRELOAD_PATH,
-      webDistPath: WEB_DIST_PATH,
-      backgroundColor: getWindowBackgroundColor(themePreference),
-    });
-    windowManager.setCloseToTray(desktopPreferences.closeToTray);
+    createMainWindow();
 
     // Setup tray, shortcuts, menu
-    trayManager.create(mainWindow, BUILD_RESOURCES_PATH);
-    shortcutManager.register(mainWindow);
+    trayManager.create(BUILD_RESOURCES_PATH, {
+      toggleWindow: toggleMainWindow,
+      showWindow: () => { ensureMainWindowVisible(); },
+      selectClip: (clipId) => { ensureMainWindowVisible(clipId); },
+      quit: quitFully,
+    });
+    shortcutManager.register(() => ensureMainWindowVisible());
     createAppMenu();
     registerIpcHandlers();
 
     // Connect main-process WebSocket (for clipboard monitor dispatch)
     connectToServer();
-
-    // Show window once HTML is loaded (server is already ready)
-    mainWindow.once("ready-to-show", () => {
-      mainWindow.show();
-    });
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
+    if (
+      !forceActualQuit &&
+      desktopPreferences.backgroundRunning &&
+      desktopPreferences.quitToBackground
+    ) {
+      event.preventDefault();
+      const mainWindow = windowManager.getWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+      }
+      return;
+    }
     isQuitting = true;
     windowManager.prepareForQuit();
     trayManager.destroy();
@@ -760,19 +869,18 @@ if (!gotLock) {
       serverWs.close();
       serverWs = null;
     }
+    forceActualQuit = false;
   });
 
   // macOS: re-show window when dock icon clicked
   app.on("activate", () => {
-    const mainWindow = windowManager.getWindow();
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    ensureMainWindowVisible();
   });
 
   // Prevent full quit on all-windows-closed (tray app)
   app.on("window-all-closed", () => {
-    // Don't quit — the app lives in the tray
+    if (!desktopPreferences.backgroundRunning || !desktopPreferences.closeToTray) {
+      quitFully();
+    }
   });
 }

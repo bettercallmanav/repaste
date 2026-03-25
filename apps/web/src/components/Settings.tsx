@@ -48,8 +48,10 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: typeof Sun }> = 
 ];
 
 const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
+  backgroundRunning: true,
   startAtLogin: false,
   closeToTray: true,
+  quitToBackground: false,
   enableOcr: true,
 };
 
@@ -130,8 +132,10 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         setDesktopPreferences(persisted);
       }
       await updateSettings({
+        backgroundRunning: nextPreferences.backgroundRunning,
         startAtLogin: nextPreferences.startAtLogin,
         closeToTray: nextPreferences.closeToTray,
+        quitToBackground: nextPreferences.quitToBackground,
         enableOcr: nextPreferences.enableOcr,
       });
     } catch (error) {
@@ -200,6 +204,17 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">Desktop</h3>
           <div className="mt-2 space-y-2">
             <SettingRow
+              label="Run in background"
+              description="Keep Repaste active without an open window so tray access and clipboard monitoring stay available."
+              control={(
+                <input
+                  type="checkbox"
+                  checked={desktopPreferences.backgroundRunning}
+                  onChange={(e) => { void handleDesktopPreferenceChange({ backgroundRunning: e.target.checked }); }}
+                />
+              )}
+            />
+            <SettingRow
               label="Launch at login"
               description="Start Repaste automatically when you sign in."
               control={(
@@ -216,8 +231,21 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
               control={(
                 <input
                   type="checkbox"
-                  checked={desktopPreferences.closeToTray}
+                  checked={desktopPreferences.backgroundRunning && desktopPreferences.closeToTray}
+                  disabled={!desktopPreferences.backgroundRunning}
                   onChange={(e) => { void handleDesktopPreferenceChange({ closeToTray: e.target.checked }); }}
+                />
+              )}
+            />
+            <SettingRow
+              label="Cmd+Q hides to background"
+              description="Keep Repaste running in the tray when you use the Quit shortcut, so you can reopen it from the tray."
+              control={(
+                <input
+                  type="checkbox"
+                  checked={desktopPreferences.backgroundRunning && desktopPreferences.quitToBackground}
+                  disabled={!desktopPreferences.backgroundRunning}
+                  onChange={(e) => { void handleDesktopPreferenceChange({ quitToBackground: e.target.checked }); }}
                 />
               )}
             />

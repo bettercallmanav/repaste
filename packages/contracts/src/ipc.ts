@@ -3,8 +3,10 @@
 export type AppearanceTheme = "system" | "light" | "dark";
 
 export interface DesktopPreferences {
+  readonly backgroundRunning: boolean;
   readonly startAtLogin: boolean;
   readonly closeToTray: boolean;
+  readonly quitToBackground: boolean;
   readonly enableOcr: boolean;
 }
 

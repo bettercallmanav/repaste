@@ -8,10 +8,11 @@ const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+V";
 export class ShortcutManager {
   private registered = false;
 
-  register(mainWindow: BrowserWindow): void {
+  register(getMainWindow: () => BrowserWindow): void {
     if (this.registered) return;
 
     const success = globalShortcut.register(DEFAULT_TOGGLE_SHORTCUT, () => {
+      const mainWindow = getMainWindow();
       if (mainWindow.isVisible() && mainWindow.isFocused()) {
         mainWindow.hide();
       } else {

@@ -51,6 +51,38 @@ function withEventBase(input: {
   };
 }
 
+function computeOverflowDeleteEvents(input: {
+  readonly readModel: ClipboardReadModel;
+  readonly maxHistorySize: number;
+  readonly occurredAt: string;
+  readonly commandId: string;
+}): ReadonlyArray<EventBase> {
+  const activeClips = input.readModel.clips
+    .filter((clip) => clip.deletedAt === null);
+  const overflowCount = Math.max(0, activeClips.length - input.maxHistorySize);
+
+  if (overflowCount === 0) return [];
+
+  const overflowClips = activeClips
+    .filter((clip) => !clip.pinned)
+    .slice(-overflowCount);
+
+  return overflowClips.map((clip) => ({
+    ...withEventBase({
+      aggregateKind: "clip",
+      aggregateId: clip.id,
+      occurredAt: input.occurredAt,
+      commandId: input.commandId,
+    }),
+    type: "clip.deleted",
+    payload: {
+      clipId: clip.id,
+      deletedAt: input.occurredAt,
+      imageAssetId: clip.imageAssetId,
+    },
+  }));
+}
+
 /**
  * Decide which events to emit for a given clipboard command.
  *
@@ -416,7 +448,7 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
     }
 
     case "settings.update": {
-      return {
+      const settingsUpdatedEvent: EventBase = {
         ...withEventBase({
           aggregateKind: "settings",
           aggregateId: "singleton",
@@ -429,6 +461,22 @@ export const decideClipboardCommand = Effect.fn("decideClipboardCommand")(functi
           updatedAt: command.updatedAt,
         },
       };
+
+      const nextMaxHistorySize = typeof command.settings.maxHistorySize === "number"
+        ? command.settings.maxHistorySize
+        : readModel.settings.maxHistorySize;
+      const overflowEvents = computeOverflowDeleteEvents({
+        readModel,
+        maxHistorySize: nextMaxHistorySize,
+        occurredAt: command.updatedAt,
+        commandId: command.commandId,
+      });
+
+      if (overflowEvents.length === 0) {
+        return settingsUpdatedEvent;
+      }
+
+      return [settingsUpdatedEvent, ...overflowEvents];
     }
 
     default: {

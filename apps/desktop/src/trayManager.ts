@@ -1,15 +1,26 @@
-import { Tray, Menu, nativeImage, type BrowserWindow } from "electron";
+import { Tray, Menu, nativeImage } from "electron";
 import path from "node:path";
-import { IPC_CHANNELS } from "@clipm/contracts/ipc";
 
 /**
  * Manages the macOS / Windows / Linux system tray icon and quick-access menu.
  */
+interface TrayCallbacks {
+  readonly toggleWindow: () => void;
+  readonly showWindow: () => void;
+  readonly selectClip: (clipId: string) => void;
+  readonly quit: () => void;
+}
+
 export class TrayManager {
   private tray: Tray | null = null;
   private recentClips: Array<{ id: string; preview: string }> = [];
+  private callbacks: TrayCallbacks | null = null;
 
-  create(mainWindow: BrowserWindow, resourcesPath: string): Tray {
+  create(
+    resourcesPath: string,
+    callbacks: TrayCallbacks,
+  ): Tray {
+    this.callbacks = callbacks;
     // Load the tray icon from build resources
     // macOS uses "Template" images so the OS can adapt to light/dark menu bar
     const isMac = process.platform === "darwin";
@@ -36,37 +47,31 @@ export class TrayManager {
     this.tray.setToolTip("Repaste");
 
     this.tray.on("click", () => {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
+      this.callbacks?.toggleWindow();
     });
 
-    this.updateMenu(mainWindow);
+    this.updateMenu();
     return this.tray;
   }
 
-  updateRecentClips(clips: Array<{ id: string; preview: string }>, mainWindow: BrowserWindow): void {
+  updateRecentClips(clips: Array<{ id: string; preview: string }>): void {
     this.recentClips = clips.slice(0, 10);
-    this.updateMenu(mainWindow);
+    this.updateMenu();
   }
 
   destroy(): void {
     this.tray?.destroy();
     this.tray = null;
+    this.callbacks = null;
   }
 
-  private updateMenu(mainWindow: BrowserWindow): void {
+  private updateMenu(): void {
     if (!this.tray) return;
 
     const clipItems: Electron.MenuItemConstructorOptions[] = this.recentClips.map((clip) => ({
       label: clip.preview.slice(0, 60).replace(/\n/g, " "),
       click: () => {
-        mainWindow.webContents.send(IPC_CHANNELS.trayClipSelected, clip.id);
-        mainWindow.show();
-        mainWindow.focus();
+        this.callbacks?.selectClip(clip.id);
       },
     }));
 
@@ -77,12 +82,16 @@ export class TrayManager {
       {
         label: "Show Window",
         click: () => {
-          mainWindow.show();
-          mainWindow.focus();
+          this.callbacks?.showWindow();
         },
       },
       { type: "separator" },
-      { label: "Quit", role: "quit" },
+      {
+        label: "Quit",
+        click: () => {
+          this.callbacks?.quit();
+        },
+      },
     ];
 
     const contextMenu = Menu.buildFromTemplate(template);
