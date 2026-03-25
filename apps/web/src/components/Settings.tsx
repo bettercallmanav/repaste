@@ -49,9 +49,9 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: typeof Sun }> = 
 
 const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   backgroundRunning: true,
-  startAtLogin: false,
+  startAtLogin: true,
   closeToTray: true,
-  quitToBackground: false,
+  quitToBackground: true,
   enableOcr: true,
 };
 
@@ -214,6 +214,35 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
                 />
               )}
             />
+            {desktopPreferences.backgroundRunning ? (
+              <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface-muted)] p-3">
+                <SettingRow
+                  label="Hide window when I close it"
+                  description="Closing the window hides Repaste instead of closing it."
+                  control={(
+                    <input
+                      type="checkbox"
+                      checked={desktopPreferences.closeToTray}
+                      onChange={(e) => { void handleDesktopPreferenceChange({ closeToTray: e.target.checked }); }}
+                    />
+                  )}
+                />
+                <SettingRow
+                  label="Hide Repaste when I press Cmd+Q"
+                  description="Cmd+Q hides Repaste to the tray instead of fully closing it."
+                  control={(
+                    <input
+                      type="checkbox"
+                      checked={desktopPreferences.quitToBackground}
+                      onChange={(e) => { void handleDesktopPreferenceChange({ quitToBackground: e.target.checked }); }}
+                    />
+                  )}
+                />
+                <p className="ui-text-muted px-1 text-xs">
+                  To fully close Repaste, use Tray &gt; Quit.
+                </p>
+              </div>
+            ) : null}
             <SettingRow
               label="Open Repaste when I log in"
               description="Start Repaste automatically when you sign in."
@@ -225,35 +254,6 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
                 />
               )}
             />
-            <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface-muted)] p-3">
-              <SettingRow
-                label="Hide window when I close it"
-                description="Closing the window hides Repaste instead of closing it."
-                control={(
-                  <input
-                    type="checkbox"
-                    checked={desktopPreferences.backgroundRunning && desktopPreferences.closeToTray}
-                    disabled={!desktopPreferences.backgroundRunning}
-                    onChange={(e) => { void handleDesktopPreferenceChange({ closeToTray: e.target.checked }); }}
-                  />
-                )}
-              />
-              <SettingRow
-                label="Hide Repaste when I press Cmd+Q"
-                description="Cmd+Q hides Repaste to the tray instead of fully closing it."
-                control={(
-                  <input
-                    type="checkbox"
-                    checked={desktopPreferences.backgroundRunning && desktopPreferences.quitToBackground}
-                    disabled={!desktopPreferences.backgroundRunning}
-                    onChange={(e) => { void handleDesktopPreferenceChange({ quitToBackground: e.target.checked }); }}
-                  />
-                )}
-              />
-              <p className="ui-text-muted px-1 text-xs">
-                To fully close Repaste, use Tray &gt; Quit.
-              </p>
-            </div>
           </div>
         </div>
 
