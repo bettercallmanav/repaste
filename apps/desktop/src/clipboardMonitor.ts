@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clipboard, nativeImage } from "electron";
@@ -7,7 +8,7 @@ import { categorize, extractMetadata } from "@clipm/shared/contentAnalyzer";
 import type { ClipboardCommand } from "@clipm/contracts";
 import type { OcrProvider } from "./ocr/OcrProvider.ts";
 
-const POLL_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 200;
 const IMAGE_PREVIEW_MAX_EDGE = 720;
 const IMAGE_FILE_EXTENSIONS = new Set([
   ".png",
@@ -25,6 +26,22 @@ const IMAGE_FILE_EXTENSIONS = new Set([
   ".icns",
   ".ico",
 ]);
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".tiff": "image/tiff",
+  ".tif": "image/tiff",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".avif": "image/avif",
+  ".svg": "image/svg+xml",
+  ".icns": "image/icns",
+  ".ico": "image/x-icon",
+};
 
 export type CaptureHandler = (command: ClipboardCommand) => void | Promise<void>;
 
@@ -36,6 +53,13 @@ interface ClipboardMonitorOptions {
 interface ClipboardSnapshot {
   readonly key: string;
   readonly emit: () => void;
+}
+
+interface ImageSnapshot {
+  readonly image: Electron.NativeImage;
+  readonly key: string;
+  readonly sourceFilePath: string | null;
+  readonly assetId: string;
 }
 
 /**
@@ -113,7 +137,11 @@ export class ClipboardMonitor {
     void this.handler?.(command);
   }
 
-  private async emitImageCapture(img: Electron.NativeImage, assetId: string): Promise<void> {
+  private async emitImageCapture(
+    img: Electron.NativeImage,
+    assetId: string,
+    sourceFilePath: string | null = null,
+  ): Promise<void> {
     const handler = this.handler;
     if (!handler) {
       return;
@@ -121,7 +149,7 @@ export class ClipboardMonitor {
 
     const dataUrl = this.createPreviewDataUrl(img);
     const { width, height } = img.getSize();
-    const { imageAssetPath, imageMimeType } = this.persistImageAsset(img, assetId);
+    const { imageAssetPath, imageMimeType } = this.persistImageAsset(img, assetId, sourceFilePath);
     const preview = `[Image ${width}x${height}]`;
     const now = new Date().toISOString();
     const clipId = crypto.randomUUID();
@@ -156,6 +184,16 @@ export class ClipboardMonitor {
     } as ClipboardCommand;
 
     await Promise.resolve(handler(command));
+
+    const filenameTag = this.getFilenameTag(sourceFilePath);
+    if (filenameTag) {
+      await Promise.resolve(handler({
+        commandId: crypto.randomUUID(),
+        type: "clip.tag",
+        clipId,
+        tag: filenameTag,
+      } as ClipboardCommand));
+    }
 
     if (!imageAssetPath || !this.ocrProvider || !ocrAvailable) {
       return;
@@ -219,6 +257,7 @@ export class ClipboardMonitor {
   }
 
   private readImageSnapshot(): ClipboardSnapshot | null {
+    const hasFileLikeFormats = this.hasClipboardFileFormats();
     const imageFile = this.readImageFileFromClipboard();
     if (!imageFile) {
       const directImage = clipboard.readImage();
@@ -231,33 +270,64 @@ export class ClipboardMonitor {
           };
         }
       }
+      if (hasFileLikeFormats) {
+        return null;
+      }
       return null;
     }
 
-    const hash = this.hashNativeImage(imageFile);
+    const hash = this.hashNativeImage(imageFile.image);
     if (hash.length === 0) {
       return null;
     }
 
     return {
-      key: `image-file:${hash}`,
-      emit: () => { void this.emitImageCapture(imageFile, hash); },
+      key: imageFile.key,
+      emit: () => { void this.emitImageCapture(imageFile.image, imageFile.assetId, imageFile.sourceFilePath); },
     };
   }
 
-  private readImageFileFromClipboard(): Electron.NativeImage | null {
+  private readImageFileFromClipboard(): ImageSnapshot | null {
     for (const filePath of this.readClipboardFilePaths()) {
       if (!this.isImageFilePath(filePath)) {
         continue;
       }
 
-      const image = nativeImage.createFromPath(filePath);
+      const image = this.readImageFromFilePath(filePath);
       if (!image.isEmpty()) {
-        return image;
+        const assetId = this.hashFilePath(filePath) ?? this.hashNativeImage(image);
+        const fileKey = this.getFileSnapshotKey(filePath) ?? `image-file:${assetId}`;
+        return {
+          image,
+          key: fileKey,
+          sourceFilePath: filePath,
+          assetId,
+        };
       }
     }
 
     return null;
+  }
+
+  private hasClipboardFileFormats(): boolean {
+    return clipboard.availableFormats().some((format) => {
+      const normalizedFormat = format.toLowerCase();
+      return normalizedFormat.includes("file") || normalizedFormat.includes("uri");
+    });
+  }
+
+  private getFilenameTag(sourceFilePath: string | null): string | null {
+    if (!sourceFilePath) {
+      return null;
+    }
+
+    const extension = path.extname(sourceFilePath);
+    const filename = path.basename(sourceFilePath, extension).trim();
+    if (filename.length === 0) {
+      return null;
+    }
+
+    return filename.slice(0, 80);
   }
 
   private readClipboardFilePaths(): string[] {
@@ -273,14 +343,75 @@ export class ClipboardMonitor {
       }
 
       try {
-        const raw = clipboard.readBuffer(format).toString("utf8");
-        this.addPathsFromRawClipboard(candidates, raw);
+        const buffer = clipboard.readBuffer(format);
+        this.addPathsFromPlistBuffer(candidates, buffer);
+        this.addPathsFromBuffer(candidates, buffer);
       } catch {
         // Ignore clipboard formats that can't be decoded as UTF-8 text.
       }
     }
 
     return [...candidates];
+  }
+
+  private addPathsFromBuffer(target: Set<string>, buffer: Buffer): void {
+    const textCandidates = new Set<string>();
+
+    try {
+      textCandidates.add(buffer.toString("utf8"));
+    } catch {
+      // Ignore invalid UTF-8.
+    }
+
+    try {
+      textCandidates.add(buffer.toString("utf16le"));
+    } catch {
+      // Ignore invalid UTF-16.
+    }
+
+    for (const text of textCandidates) {
+      this.addPathsFromRawClipboard(target, text);
+    }
+  }
+
+  private addPathsFromPlistBuffer(target: Set<string>, buffer: Buffer): void {
+    try {
+      const result = spawnSync(
+        "plutil",
+        ["-convert", "json", "-o", "-", "-"],
+        {
+          input: buffer,
+          encoding: "utf8",
+          maxBuffer: 1024 * 1024,
+        },
+      );
+
+      if (result.status !== 0 || !result.stdout) {
+        return;
+      }
+
+      for (const text of this.extractStringsFromUnknownJson(JSON.parse(result.stdout) as unknown)) {
+        this.addPathsFromRawClipboard(target, text);
+      }
+    } catch {
+      // Not a property list payload.
+    }
+  }
+
+  private extractStringsFromUnknownJson(value: unknown): string[] {
+    if (typeof value === "string") {
+      return [value];
+    }
+
+    if (Array.isArray(value)) {
+      return value.flatMap((entry) => this.extractStringsFromUnknownJson(entry));
+    }
+
+    if (value && typeof value === "object") {
+      return Object.values(value).flatMap((entry) => this.extractStringsFromUnknownJson(entry));
+    }
+
+    return [];
   }
 
   private addPathsFromRawClipboard(target: Set<string>, raw: string): void {
@@ -299,6 +430,14 @@ export class ClipboardMonitor {
 
     for (const part of normalizedRaw.split(/\r?\n/)) {
       const resolvedPath = this.resolveClipboardPath(part);
+      if (resolvedPath) {
+        target.add(resolvedPath);
+      }
+    }
+
+    const absolutePathMatches = normalizedRaw.match(/\/Users\/[^\r\n]+\.(png|jpe?g|gif|webp|bmp|tiff?|heic|heif|avif|svg|icns|ico)/gi) ?? [];
+    for (const match of absolutePathMatches) {
+      const resolvedPath = this.resolveClipboardPath(match);
       if (resolvedPath) {
         target.add(resolvedPath);
       }
@@ -328,15 +467,61 @@ export class ClipboardMonitor {
     return IMAGE_FILE_EXTENSIONS.has(extension);
   }
 
+  private readImageFromFilePath(filePath: string): Electron.NativeImage {
+    try {
+      const image = nativeImage.createFromBuffer(readFileSync(filePath));
+      if (!image.isEmpty()) {
+        return image;
+      }
+    } catch {
+      // Fall back to createFromPath below.
+    }
+
+    return nativeImage.createFromPath(filePath);
+  }
+
+  private hashFilePath(filePath: string): string | null {
+    try {
+      return createHash("sha1").update(readFileSync(filePath)).digest("hex");
+    } catch {
+      return null;
+    }
+  }
+
+  private getFileSnapshotKey(filePath: string): string | null {
+    try {
+      const stats = statSync(filePath);
+      return `image-file:${filePath}:${stats.size}:${stats.mtimeMs}`;
+    } catch {
+      return null;
+    }
+  }
+
   private persistImageAsset(
     img: Electron.NativeImage,
     assetId: string,
+    sourceFilePath: string | null = null,
   ): { imageAssetPath: string | null; imageMimeType: string | null } {
     if (!this.imageAssetDir) {
       return { imageAssetPath: null, imageMimeType: null };
     }
 
     try {
+      if (sourceFilePath && existsSync(sourceFilePath)) {
+        const extension = path.extname(sourceFilePath).toLowerCase();
+        const imageAssetPath = path.join(
+          this.imageAssetDir,
+          `${assetId}${IMAGE_FILE_EXTENSIONS.has(extension) ? extension : ".png"}`,
+        );
+        if (!existsSync(imageAssetPath)) {
+          writeFileSync(imageAssetPath, readFileSync(sourceFilePath));
+        }
+        return {
+          imageAssetPath,
+          imageMimeType: IMAGE_MIME_TYPES[extension] ?? "application/octet-stream",
+        };
+      }
+
       const imageAssetPath = path.join(this.imageAssetDir, `${assetId}.png`);
       if (!existsSync(imageAssetPath)) {
         writeFileSync(imageAssetPath, img.toPNG());
