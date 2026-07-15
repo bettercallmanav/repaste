@@ -120,7 +120,7 @@ function App() {
       {/* Header */}
       <header className="ui-divider flex items-center gap-2 border-b px-3.5 py-2.5">
         <img src={logoUrl} alt="Repaste logo" className="ui-logo" />
-        <h1 className="ui-text-primary ui-mono text-[13px] font-semibold tracking-wide">repaste</h1>
+        <h1 className="ui-text-primary ui-mono text-[13px] font-semibold tracking-wide">Repaste</h1>
 
         <div className="ml-auto flex gap-1">
           <button
