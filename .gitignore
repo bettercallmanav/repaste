@@ -8,3 +8,6 @@ release/
 *.db
 *.db-wal
 *.db-shm
+*.tsbuildinfo
+apps/desktop/build/bin/
+apps/desktop/build/.swift-module-cache/

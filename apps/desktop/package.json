@@ -19,7 +19,8 @@
     "@clipm/server": "workspace:*",
     "@effect/platform-node": "catalog:",
     "better-sqlite3": "^12.6.2",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
