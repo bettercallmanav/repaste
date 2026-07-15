@@ -561,7 +561,9 @@ function refreshTrayRecentClips(): void {
   })
     .then((snapshot) => {
       trayManager.updateRecentClips(
-        snapshot.clips.map((clip) => ({ id: clip.id, preview: clip.preview })),
+        snapshot.clips
+          .filter((clip) => clip.deletedAt === null)
+          .map((clip) => ({ id: clip.id, preview: clip.preview })),
       );
     })
     .catch((error) => {

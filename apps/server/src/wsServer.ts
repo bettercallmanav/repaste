@@ -155,10 +155,13 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const subscriptionsScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(subscriptionsScope, Exit.void));
 
-  // A client that stops reading accumulates ws buffer; past this point we
-  // drop it rather than buffer unboundedly. It reconnects and re-syncs via
-  // a fresh snapshot (renderers refresh on reconnect).
-  const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+  // Backpressure: a busy socket (e.g. a multi-megabyte snapshot response
+  // still draining) SKIPS event pushes rather than being terminated —
+  // terminating healthy clients mid-download put the desktop connection
+  // into a permanent reconnect loop. Only a truly wedged client (buffer
+  // far beyond any legitimate response) is dropped.
+  const SKIP_BUFFERED_BYTES = 4 * 1024 * 1024;
+  const TERMINATE_BUFFERED_BYTES = 64 * 1024 * 1024;
 
   yield* Stream.runForEach(engine.streamDomainEvents, (event) =>
     Ref.get(clients).pipe(
@@ -168,9 +171,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           const msg = JSON.stringify(push);
           for (const ws of set) {
             if (ws.readyState !== ws.OPEN) continue;
-            if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
-              console.warn("[wsServer] dropping slow client (send buffer full)");
+            if (ws.bufferedAmount > TERMINATE_BUFFERED_BYTES) {
+              console.warn("[wsServer] dropping wedged client (send buffer exceeded hard cap)");
               ws.terminate();
+              continue;
+            }
+            if (ws.bufferedAmount > SKIP_BUFFERED_BYTES) {
+              // Skip this event for this client; it will re-sync on the
+              // next event or snapshot request.
               continue;
             }
             try {
