@@ -57,7 +57,10 @@ function isFilePath(text: string): boolean {
 
 // ─── Phone Number Detection ──────────────────────────────────────────────────
 
-const PHONE_RE = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{6,15}$/;
+// Optional country code, then either a balanced parenthesized area code
+// (`+1 (234) 567-8901`) or none at all (`+44 20 7946 0958`) — an
+// unbalanced paren is not a phone number.
+const PHONE_RE = /^[+]?[0-9]{0,4}[-\s.]?(?:[(][0-9]{1,4}[)][-\s.]?)?[0-9][-\s./0-9]{5,14}$/;
 
 function isPhoneNumber(text: string): boolean {
   return PHONE_RE.test(text.trim());
