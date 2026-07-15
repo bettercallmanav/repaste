@@ -1,30 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clipboard, nativeImage } from "electron";
 import { categorize, extractMetadata } from "@clipm/shared/contentAnalyzer";
 import type { ClipboardCommand } from "@clipm/contracts";
+import { isImageFilePath, mimeTypeForImagePath, pathsFromFilenamesPlist } from "./imageFileUtils.ts";
 import type { OcrProvider } from "./ocr/OcrProvider.ts";
 
 const POLL_INTERVAL_MS = 500;
 const IMAGE_PREVIEW_MAX_EDGE = 720;
-const IMAGE_FILE_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-  ".tif",
-  ".heic",
-  ".heif",
-  ".avif",
-  ".svg",
-  ".icns",
-  ".ico",
-]);
 
 export type CaptureHandler = (command: ClipboardCommand) => void | Promise<void>;
 
@@ -161,6 +146,16 @@ export class ClipboardMonitor {
       return;
     }
 
+    await this.runOcrForCapture(handler, clipId, imageAssetPath);
+  }
+
+  private async runOcrForCapture(
+    handler: CaptureHandler,
+    clipId: string,
+    imageAssetPath: string,
+  ): Promise<void> {
+    if (!this.ocrProvider) return;
+
     try {
       const result = await this.ocrProvider.extractText(imageAssetPath);
       if (result.status === "ok") {
@@ -197,6 +192,94 @@ export class ClipboardMonitor {
     }
   }
 
+  /**
+   * Capture a single image FILE copied in Finder. The original bytes are
+   * stored as the asset (no PNG re-encode — Vision OCR reads the original
+   * directly); the preview comes from a direct decode when possible
+   * (png/jpeg) or the OS thumbnailer (QuickLook) for every other format.
+   * If neither can render it, the copy is ignored entirely.
+   */
+  private async emitImageFileCapture(filePath: string): Promise<void> {
+    const handler = this.handler;
+    if (!handler || !this.imageAssetDir) return;
+
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(filePath);
+    } catch {
+      return;
+    }
+
+    const assetId = createHash("sha1").update(bytes).digest("hex");
+    const extension = path.extname(filePath).toLowerCase();
+    const imageMimeType = mimeTypeForImagePath(filePath);
+
+    let imageAssetPath: string | null = null;
+    try {
+      imageAssetPath = path.join(this.imageAssetDir, `${assetId}${extension}`);
+      if (!existsSync(imageAssetPath)) {
+        writeFileSync(imageAssetPath, bytes);
+      }
+    } catch {
+      imageAssetPath = null;
+    }
+
+    // Preview: direct decode covers png/jpeg; QuickLook covers the rest
+    // (heic, webp, tiff, …). Thumbnail dimensions are capped at the
+    // preview edge, so they may be smaller than the original's.
+    let previewImage = nativeImage.createFromPath(filePath);
+    const exactSize = !previewImage.isEmpty();
+    if (previewImage.isEmpty()) {
+      try {
+        previewImage = await nativeImage.createThumbnailFromPath(filePath, {
+          width: IMAGE_PREVIEW_MAX_EDGE,
+          height: IMAGE_PREVIEW_MAX_EDGE,
+        });
+      } catch {
+        // Unsupported or unreadable — ignored below.
+      }
+    }
+    if (previewImage.isEmpty()) return;
+
+    const { width, height } = previewImage.getSize();
+    const dataUrl = this.createPreviewDataUrl(previewImage);
+    const now = new Date().toISOString();
+    const clipId = crypto.randomUUID();
+    const ocrAvailable = this.ocrEnabled && (this.ocrProvider?.isAvailable ?? false);
+
+    const command = {
+      commandId: crypto.randomUUID(),
+      type: "clip.capture",
+      clipId,
+      content: "[Image]",
+      contentType: "image" as const,
+      category: "image" as const,
+      preview: exactSize ? `[Image ${width}x${height}]` : "[Image]",
+      imageDataUrl: dataUrl,
+      imageAssetId: imageAssetPath ? assetId : null,
+      imageAssetPath,
+      imageWidth: width,
+      imageHeight: height,
+      imageMimeType,
+      ocrText: null,
+      ocrStatus: imageAssetPath && ocrAvailable ? "pending" as const : "skipped" as const,
+      sourceApp: null,
+      metadata: {
+        charCount: 0,
+        wordCount: 0,
+        lineCount: 0,
+        language: null,
+        url: null,
+      },
+      capturedAt: now,
+    } as ClipboardCommand;
+
+    await Promise.resolve(handler(command));
+
+    if (!imageAssetPath || !this.ocrProvider || !ocrAvailable) return;
+    await this.runOcrForCapture(handler, clipId, imageAssetPath);
+  }
+
   private hashNativeImage(img: Electron.NativeImage): string {
     const bitmap = img.toBitmap();
     return createHash("sha1").update(bitmap).digest("hex");
@@ -220,54 +303,80 @@ export class ClipboardMonitor {
   }
 
   private readImageSnapshot(): ClipboardSnapshot | null {
-    const imageFile = this.readImageFileFromClipboard();
-    if (!imageFile) {
-      const directImage = clipboard.readImage();
-      if (!directImage.isEmpty()) {
-        const hash = this.hashNativeImage(directImage);
-        if (hash.length > 0) {
+    const filePaths = this.readClipboardFilePaths();
+    if (filePaths.length > 0) {
+      // File copies: process exactly ONE image file. Everything else —
+      // non-image files (PDFs etc.) and multi-file selections — is
+      // deliberately ignored. Never fall through to clipboard.readImage():
+      // macOS also puts the Finder ICON on the pasteboard for file copies,
+      // which is the empty/fallback image users were seeing.
+      const first = filePaths[0]!;
+      if (filePaths.length === 1 && isImageFilePath(first)) {
+        const key = this.imageFileSnapshotKey(first);
+        if (key) {
           return {
-            key: `image:${hash}`,
-            emit: () => { void this.emitImageCapture(directImage, hash); },
+            key,
+            emit: () => { void this.emitImageFileCapture(first); },
           };
         }
       }
-      return null;
+      return {
+        key: `files:${createHash("sha1").update(filePaths.join("\n")).digest("hex")}`,
+        emit: () => {},
+      };
     }
 
-    const hash = this.hashNativeImage(imageFile);
-    if (hash.length === 0) {
-      return null;
+    const directImage = clipboard.readImage();
+    if (!directImage.isEmpty()) {
+      const hash = this.hashNativeImage(directImage);
+      if (hash.length > 0) {
+        return {
+          key: `image:${hash}`,
+          emit: () => { void this.emitImageCapture(directImage, hash); },
+        };
+      }
     }
-
-    return {
-      key: `image-file:${hash}`,
-      emit: () => { void this.emitImageCapture(imageFile, hash); },
-    };
+    return null;
   }
 
-  private readImageFileFromClipboard(): Electron.NativeImage | null {
-    for (const filePath of this.readClipboardFilePaths()) {
-      if (!this.isImageFilePath(filePath)) {
-        continue;
-      }
-
-      const image = nativeImage.createFromPath(filePath);
-      if (!image.isEmpty()) {
-        return image;
-      }
+  /** Cheap change-detection key for a file on the clipboard: no decoding
+   *  or content hashing in the 500ms poll loop. */
+  private imageFileSnapshotKey(filePath: string): string | null {
+    try {
+      const stats = statSync(filePath);
+      return `image-file:${filePath}:${stats.mtimeMs}:${stats.size}`;
+    } catch {
+      return null;
     }
-
-    return null;
   }
 
   private readClipboardFilePaths(): string[] {
     const candidates = new Set<string>();
-    const formats = clipboard.availableFormats();
+
+    // macOS puts file copies on the raw NSPasteboard types. Note that
+    // readBuffer("text/uri-list") returns an EMPTY string on macOS
+    // (Electron quirk), so clipboard.read() on these types is the only
+    // reliable source. NSFilenamesPboardType lists EVERY file of a
+    // multi-select, which lets us detect selections we ignore.
+    try {
+      this.addPathsFromRawClipboard(candidates, clipboard.read("public.file-url") ?? "");
+    } catch {
+      // Format unavailable on this platform/clipboard.
+    }
+    try {
+      for (const plistPath of pathsFromFilenamesPlist(clipboard.read("NSFilenamesPboardType") ?? "")) {
+        const resolvedPath = this.resolveClipboardPath(plistPath);
+        if (resolvedPath) {
+          candidates.add(resolvedPath);
+        }
+      }
+    } catch {
+      // Format unavailable on this platform/clipboard.
+    }
 
     this.addPathsFromRawClipboard(candidates, clipboard.readText() ?? "");
 
-    for (const format of formats) {
+    for (const format of clipboard.availableFormats()) {
       const normalizedFormat = format.toLowerCase();
       if (!normalizedFormat.includes("file") && !normalizedFormat.includes("uri")) {
         continue;
@@ -322,11 +431,6 @@ export class ClipboardMonitor {
     }
 
     return existsSync(trimmed) ? trimmed : null;
-  }
-
-  private isImageFilePath(filePath: string): boolean {
-    const extension = path.extname(filePath).toLowerCase();
-    return IMAGE_FILE_EXTENSIONS.has(extension);
   }
 
   private persistImageAsset(
