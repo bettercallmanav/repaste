@@ -10,6 +10,7 @@ let latestSearchRequestId = 0;
 let initPromise: Promise<void> | null = null;
 let unsubscribeDomainEvents: (() => void) | null = null;
 let unsubscribeReconnect: (() => void) | null = null;
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 type DesktopWindow = Window & {
   desktopBridge?: ClipboardDesktopBridge;
@@ -50,6 +51,7 @@ interface ClipboardStore {
   selectedClipId: string | null;
   selectedClipIds: readonly string[];
   loading: boolean;
+  toast: string | null;
 
   // Actions
   init: () => Promise<void>;
@@ -72,6 +74,7 @@ interface ClipboardStore {
   retryOcr: (clipId: string) => Promise<void>;
   mergeClips: (clipIds: readonly string[], separator: string) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
+  showToast: (message: string) => void;
 }
 
 function getDesktopBridge(): ClipboardDesktopBridge | undefined {
@@ -187,6 +190,7 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
   selectedClipId: null,
   selectedClipIds: [],
   loading: true,
+  toast: null,
 
   init: async () => {
     if (initPromise) return initPromise;
@@ -358,6 +362,12 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
       capturedAt: new Date().toISOString(),
     } as ClipboardCommand);
     set({ selectedClipIds: [] });
+  },
+
+  showToast: (message) => {
+    if (toastTimer) clearTimeout(toastTimer);
+    set({ toast: message });
+    toastTimer = setTimeout(() => set({ toast: null }), 1600);
   },
 
   updateSettings: async (settings) => {

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Merge, X } from "lucide-react";
 import { useClipboardStore } from "../store.ts";
 
 export function MergeBar() {
@@ -15,27 +14,22 @@ export function MergeBar() {
   }
 
   return (
-    <div className="ui-divider ui-panel-tint flex items-center gap-2 border-b px-4 py-2">
-      <span className="ui-text-muted text-xs">
-        {selectedClipIds.length} clips selected
+    <div className="ui-divider ui-panel flex items-center gap-2 border-t px-3.5 py-2">
+      <span className="ui-mono text-[10.5px] text-amber-400">
+        {selectedClipIds.length} selected
       </span>
       <input
         value={separator}
         onChange={(e) => setSeparator(e.target.value)}
-        className="ui-input w-16 rounded px-2 py-0.5 text-xs font-mono"
+        className="ui-input ui-mono w-14 rounded-md px-2 py-1 text-center text-[11px]"
         title="Separator (use \\n for newline)"
+        aria-label="Merge separator"
       />
-      <button
-        onClick={handleMerge}
-        className="ui-btn-primary flex items-center gap-1 rounded px-2 py-1 text-xs font-medium"
-      >
-        <Merge className="size-3" /> Merge
+      <button onClick={handleMerge} className="ui-act ui-act-go ui-mono">
+        Merge
       </button>
-      <button
-        onClick={clearSelection}
-        className="ui-btn-secondary flex items-center gap-1 rounded px-2 py-1 text-xs"
-      >
-        <X className="size-3" /> Cancel
+      <button onClick={clearSelection} className="ui-act ui-mono">
+        Cancel
       </button>
     </div>
   );

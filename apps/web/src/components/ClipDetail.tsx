@@ -1,4 +1,5 @@
-import { Copy, Download, FolderOpen, Pin, RefreshCw, Trash2, X } from "lucide-react";
+import { useEffect } from "react";
+import { Copy, Download, FolderOpen, Pin, RefreshCw, Trash2 } from "lucide-react";
 import type { Clip } from "@clipm/contracts";
 import { useClipboardStore } from "../store.ts";
 import { TagInput } from "./TagInput.tsx";
@@ -7,9 +8,17 @@ import { getClipSearchMatchMeta, HighlightText } from "./SearchHighlight.tsx";
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="ui-text-muted text-xs font-medium">{label}</dt>
-      <dd className="ui-text-secondary mt-0.5 text-sm">{value}</dd>
+      <dt className="ui-text-muted ui-mono text-[9px] font-semibold uppercase tracking-[0.14em]">{label}</dt>
+      <dd className="ui-text-secondary mt-0.5 text-[12.5px]">{value}</dd>
     </div>
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <h3 className="ui-text-muted ui-mono ui-section-rule mb-2 text-[9.5px] font-semibold uppercase tracking-[0.18em]">
+      {children}
+    </h3>
   );
 }
 
@@ -19,138 +28,155 @@ function getImageDisplaySrc(clip: Clip): string | null {
   return null;
 }
 
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(diff / 3_600_000);
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export function ClipDetail() {
-  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip, saveImageAs, revealImageInFinder, retryOcr, searchResolvedQuery } =
+  const { clips, selectedClipId, copyClip, selectClip, pinClip, unpinClip, deleteClip, saveImageAs, revealImageInFinder, retryOcr, searchResolvedQuery, showToast } =
     useClipboardStore();
 
   const clip = clips.find((c: Clip) => c.id === selectedClipId);
+
+  // Esc returns to the list.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        selectClip(null);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectClip]);
+
   if (!clip) return null;
   const imageDisplaySrc = clip.contentType === "image" ? getImageDisplaySrc(clip) : null;
   const matchMeta = getClipSearchMatchMeta(clip, searchResolvedQuery);
 
   return (
-    <div className="ui-divider ui-panel-tint flex h-full flex-col border-l">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       {/* Header */}
-      <div className="ui-divider flex items-center justify-between border-b px-4 py-3">
-        <h2 className="ui-text-primary text-sm font-medium">Clip Detail</h2>
-        <button
-          onClick={() => selectClip(null)}
-          className="ui-icon-button rounded p-1"
-        >
-          <X className="size-4" />
+      <div className="ui-divider flex items-center gap-2.5 border-b px-3.5 py-2.5">
+        <button onClick={() => selectClip(null)} className="ui-act ui-mono">
+          &larr; ESC
         </button>
+        <span className="ui-text-muted ui-mono text-[11px] uppercase tracking-[0.14em]">
+          {clip.contentType} · {formatRelativeTime(clip.capturedAt)}
+          {clip.sourceApp ? ` · from ${clip.sourceApp}` : ""}
+        </span>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 space-y-4 overflow-y-auto p-3.5">
         {clip.contentType === "image" && imageDisplaySrc ? (
           <div className="space-y-3">
             <img
               src={imageDisplaySrc}
               alt="Clipboard image"
-              className="ui-image-frame max-w-full rounded-lg border"
+              className="ui-image-frame block max-w-full rounded-lg border bg-white"
             />
             {matchMeta.ocrOnlyMatch && (
-              <div className="ui-search-note rounded-lg px-3 py-2 text-sm">
-                Matched via OCR text in this image.
+              <div className="ui-search-note rounded-lg px-3 py-2 text-xs">
+                Matched via the text inside this image.
               </div>
             )}
           </div>
         ) : (
-          <pre className="ui-pre whitespace-pre-wrap break-all rounded-lg p-3 text-sm font-mono leading-relaxed">
+          <pre className="ui-pre ui-mono whitespace-pre-wrap break-all rounded-lg p-3 text-xs leading-relaxed">
             <HighlightText text={clip.content} query={searchResolvedQuery} />
           </pre>
         )}
 
-        {/* Metadata */}
-        <dl className="mt-4 grid grid-cols-2 gap-3">
-          <DetailField label="Type" value={clip.contentType} />
-          <DetailField label="Captured" value={new Date(clip.capturedAt).toLocaleString()} />
-          <DetailField label="Paste count" value={String(clip.pasteCount)} />
-          <DetailField label="Pinned" value={clip.pinned ? "Yes" : "No"} />
-          {clip.sourceApp && <DetailField label="Source" value={clip.sourceApp} />}
-          {(clip.imageWidth && clip.imageHeight) && (
-            <DetailField label="Dimensions" value={`${clip.imageWidth} x ${clip.imageHeight}`} />
-          )}
-          {clip.imageMimeType && <DetailField label="Image type" value={clip.imageMimeType} />}
-          {clip.ocrStatus && <DetailField label="OCR" value={clip.ocrStatus} />}
-          {clip.metadata.charCount > 0 && (
-            <DetailField label="Characters" value={String(clip.metadata.charCount)} />
-          )}
-          {clip.metadata.wordCount > 0 && (
-            <DetailField label="Words" value={String(clip.metadata.wordCount)} />
-          )}
-          {clip.metadata.language && (
-            <DetailField label="Language" value={clip.metadata.language} />
-          )}
-        </dl>
-
         {clip.ocrText && clip.ocrText.length > 0 && (
-          <div className="mt-4">
-            <h3 className="ui-text-muted text-xs font-medium">OCR Text</h3>
-            <pre className="ui-pre mt-1 whitespace-pre-wrap break-all rounded-lg p-3 text-xs font-mono leading-relaxed">
+          <div>
+            <SectionTitle>Text in this image</SectionTitle>
+            <pre className="ui-pre ui-mono whitespace-pre-wrap break-all rounded-lg p-3 text-xs leading-relaxed">
               <HighlightText text={clip.ocrText} query={searchResolvedQuery} />
             </pre>
           </div>
         )}
 
-        {/* Tags with add/remove */}
-        <TagInput clipId={clip.id} tags={clip.tags} />
+        <div>
+          <SectionTitle>Details</SectionTitle>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <DetailField label="Type" value={clip.contentType} />
+            <DetailField label="Captured" value={new Date(clip.capturedAt).toLocaleString()} />
+            <DetailField label="Pasted" value={`${clip.pasteCount} times`} />
+            <DetailField label="Pinned" value={clip.pinned ? "Yes" : "No"} />
+            {clip.sourceApp && <DetailField label="Source" value={clip.sourceApp} />}
+            {(clip.imageWidth && clip.imageHeight) && (
+              <DetailField label="Size" value={`${clip.imageWidth}×${clip.imageHeight}`} />
+            )}
+            {clip.imageMimeType && <DetailField label="Format" value={clip.imageMimeType} />}
+            {clip.ocrStatus && <DetailField label="Text in image" value={clip.ocrStatus} />}
+            {clip.metadata.charCount > 0 && (
+              <DetailField label="Characters" value={String(clip.metadata.charCount)} />
+            )}
+            {clip.metadata.wordCount > 0 && (
+              <DetailField label="Words" value={String(clip.metadata.wordCount)} />
+            )}
+            {clip.metadata.language && (
+              <DetailField label="Language" value={clip.metadata.language} />
+            )}
+          </dl>
+        </div>
+
+        <div>
+          <SectionTitle>Tags</SectionTitle>
+          <TagInput clipId={clip.id} tags={clip.tags} />
+        </div>
       </div>
 
       {/* Actions */}
-      <div className="ui-divider flex flex-wrap gap-2 border-t p-3">
+      <div className="ui-divider ui-panel flex flex-wrap gap-1.5 border-t p-3">
         <button
-          onClick={() => { void copyClip(clip.id); }}
-          className="ui-btn-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+          onClick={() => {
+            void copyClip(clip.id);
+            showToast("Copied ✓");
+          }}
+          className="ui-act ui-act-go ui-mono"
         >
-          <Copy className="size-3.5" />
+          <Copy className="mr-1 inline size-3" />
           Copy
         </button>
         {clip.contentType === "image" && clip.imageAssetPath && (
           <>
-            <button
-              onClick={() => { void saveImageAs(clip.id); }}
-              className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-            >
-              <Download className="size-3.5" />
-              Save
+            <button onClick={() => { void saveImageAs(clip.id); }} className="ui-act ui-mono">
+              <Download className="mr-1 inline size-3" />
+              Save as…
             </button>
-            <button
-              onClick={() => { void revealImageInFinder(clip.id); }}
-              className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-            >
-              <FolderOpen className="size-3.5" />
+            <button onClick={() => { void revealImageInFinder(clip.id); }} className="ui-act ui-mono">
+              <FolderOpen className="mr-1 inline size-3" />
               Reveal
             </button>
             {(clip.ocrStatus === "failed" || clip.ocrStatus === "skipped" || clip.ocrStatus === null) && (
-              <button
-                onClick={() => { void retryOcr(clip.id); }}
-                className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-              >
-                <RefreshCw className="size-3.5" />
+              <button onClick={() => { void retryOcr(clip.id); }} className="ui-act ui-mono">
+                <RefreshCw className="mr-1 inline size-3" />
                 Retry OCR
               </button>
             )}
           </>
         )}
         <button
-          onClick={() => {
-            if (clip.pinned) { unpinClip(clip.id); } else { pinClip(clip.id); }
-          }}
-          className="ui-btn-secondary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+          onClick={() => (clip.pinned ? unpinClip(clip.id) : pinClip(clip.id))}
+          className="ui-act ui-mono"
         >
-          <Pin className="size-3.5" />
+          <Pin className="mr-1 inline size-3" />
           {clip.pinned ? "Unpin" : "Pin"}
         </button>
         <button
           onClick={() => {
-            deleteClip(clip.id);
+            void deleteClip(clip.id);
             selectClip(null);
           }}
-          className="ui-btn-danger flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+          className="ui-act ui-act-warn ui-mono"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="mr-1 inline size-3" />
           Delete
         </button>
       </div>

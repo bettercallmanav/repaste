@@ -285,6 +285,299 @@ body {
     background-color: var(--primary-color);
     color: #fff;
   }
+
+  /* ── v2 redesign components (same tokens, new structure) ─────────── */
+
+  .ui-mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .ui-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    display: block;
+    box-sizing: border-box;
+  }
+
+  /* Dark surfaces swallow the charcoal squircle: give it a light tile. */
+  :root[data-theme="dark"] .ui-logo,
+  .dark .ui-logo {
+    width: 22px;
+    height: 22px;
+    padding: 2px;
+    background-color: #f8fafc;
+    border-radius: 6px;
+  }
+
+  .ui-hotkey {
+    color: var(--primary-color);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .ui-group-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .ui-row {
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+
+  .ui-row:hover {
+    background-color: var(--primary-faint);
+  }
+
+  .ui-row-active {
+    background-color: var(--primary-soft);
+    border-left-color: var(--primary-color);
+  }
+
+  .ui-row-multi {
+    background-color: var(--primary-faint);
+    border-left-color: #fbbf24;
+  }
+
+  .ui-rail {
+    width: 25px;
+    height: 25px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  .ui-rail-thumb {
+    width: 25px;
+    height: 25px;
+    border-radius: 7px;
+    object-fit: cover;
+    object-position: left center;
+    flex-shrink: 0;
+    border: 1px solid var(--border-strong);
+    display: block;
+  }
+
+  .ui-ocr-chip {
+    color: var(--primary-color);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .ui-ocr-chip-muted {
+    color: var(--text-muted);
+  }
+
+  .ui-ocr-chip-failed {
+    color: var(--danger-color);
+    border-color: var(--danger-color);
+  }
+
+  .ui-act {
+    color: var(--text-muted);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+
+  .ui-act:hover {
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+
+  .ui-act-go {
+    color: #fff;
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: 600;
+  }
+
+  .ui-act-go:hover {
+    color: #fff;
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
+
+  .ui-act-warn:hover {
+    color: var(--danger-color);
+    background-color: var(--danger-soft);
+    border-color: transparent;
+  }
+
+  .ui-slot {
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ui-slot:hover {
+    border-color: var(--border-strong);
+  }
+
+  .ui-slot-num {
+    color: #fff;
+    background-color: var(--primary-color);
+    border-radius: 9999px;
+    width: 15px;
+    height: 15px;
+    display: grid;
+    place-items: center;
+    font-size: 9.5px;
+    font-weight: 600;
+  }
+
+  .ui-fchip {
+    color: var(--text-secondary);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    padding: 3px 10px;
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+
+  .ui-fchip:hover {
+    border-color: var(--border-strong);
+  }
+
+  .ui-fchip-on {
+    background-color: var(--primary-soft);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+
+  .ui-flabel {
+    color: var(--text-muted);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    width: 42px;
+    flex-shrink: 0;
+  }
+
+  .ui-footer {
+    background-color: var(--surface);
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 10.5px;
+  }
+
+  .ui-kbd {
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+
+  .ui-privacy-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #10b981;
+    display: inline-block;
+  }
+
+  .ui-toast {
+    background-color: var(--primary-color);
+    color: #fff;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 12.5px;
+    padding: 9px 18px;
+    pointer-events: none;
+    transition: opacity 180ms ease, translate 180ms ease;
+  }
+
+  .ui-skel {
+    background-color: var(--surface-muted);
+    border-radius: 4px;
+  }
+
+  .ui-toggle {
+    position: relative;
+    width: 34px;
+    height: 20px;
+    border-radius: 9999px;
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 120ms ease;
+  }
+
+  .ui-toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: var(--text-muted);
+    transition: left 120ms ease, background-color 120ms ease;
+  }
+
+  .ui-toggle-on {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+  }
+
+  .ui-toggle-on::after {
+    left: 16px;
+    background-color: #fff;
+  }
+
+  .ui-theme-card {
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-soft);
+    color: var(--text-secondary);
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  .ui-theme-card-on {
+    border-color: var(--primary-color);
+    background-color: var(--primary-soft);
+    color: var(--primary-color);
+  }
+
+  .ui-section-rule {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ui-section-rule::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background-color: var(--border-color);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-toast,
+  .ui-toggle,
+  .ui-toggle::after {
+    transition: none;
+  }
 }
 
 /* Custom scrollbar */

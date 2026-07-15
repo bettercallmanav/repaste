@@ -61,13 +61,34 @@ function SettingRow(props: {
   control: ReactNode;
 }) {
   return (
-    <div className="ui-card flex items-center justify-between gap-4 rounded-lg border p-3">
+    <div className="ui-divider flex items-start justify-between gap-4 border-t py-2.5 first:border-t-0 first:pt-0">
       <div className="min-w-0">
-        <div className="ui-text-primary text-sm font-medium">{props.label}</div>
-        <div className="ui-text-muted mt-1 text-xs">{props.description}</div>
+        <div className="ui-text-primary text-[13px]">{props.label}</div>
+        <div className="ui-text-muted mt-0.5 text-[11px] leading-relaxed">{props.description}</div>
       </div>
-      <div className="shrink-0">{props.control}</div>
+      <div className="shrink-0 pt-0.5">{props.control}</div>
     </div>
+  );
+}
+
+function Toggle(props: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      aria-label={props.label}
+      onClick={() => props.onChange(!props.checked)}
+      className={props.checked ? "ui-toggle ui-toggle-on" : "ui-toggle"}
+    />
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <h3 className="ui-text-muted ui-mono ui-section-rule text-[9.5px] font-semibold uppercase tracking-[0.18em]">
+      {children}
+    </h3>
   );
 }
 
@@ -182,21 +203,19 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 space-y-5 overflow-y-auto p-3.5">
         <div>
-          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">Appearance</h3>
-          <div className="mt-2 flex gap-2">
+          <SectionTitle>Appearance</SectionTitle>
+          <div className="mt-2.5 flex gap-2">
             {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 onClick={() => { void handleThemeChange(value); }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                  theme === value
-                    ? "ui-theme-option-active"
-                    : "ui-theme-option"
+                className={`ui-mono flex flex-1 flex-col items-center gap-1.5 px-2 py-2.5 text-[11px] ${
+                  theme === value ? "ui-theme-card ui-theme-card-on" : "ui-theme-card"
                 }`}
               >
-                <Icon className="size-3.5" />
+                <Icon className="size-4" />
                 {label}
               </button>
             ))}
@@ -204,56 +223,53 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div>
-          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">Desktop</h3>
-          <div className="mt-2 space-y-2">
+          <SectionTitle>Desktop</SectionTitle>
+          <div className="mt-2.5">
             <SettingRow
-              label="Keep Repaste running"
-              description="Repaste stays in the tray even when no window is open."
+              label="Keep running in background"
+              description="Repaste keeps capturing when the window is closed."
               control={(
-                <input
-                  type="checkbox"
+                <Toggle
                   checked={desktopPreferences.backgroundRunning}
-                  onChange={(e) => { void handleDesktopPreferenceChange({ backgroundRunning: e.target.checked }); }}
+                  onChange={(checked) => { void handleDesktopPreferenceChange({ backgroundRunning: checked }); }}
+                  label="Keep running in background"
                 />
               )}
             />
             {desktopPreferences.backgroundRunning ? (
-              <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface-muted)] p-3">
+              <div className="pl-4">
                 <SettingRow
-                  label="Hide window when I close it"
-                  description="Closing the window hides Repaste instead of closing it."
+                  label="Hide window on close"
+                  description="The close button hides Repaste instead of quitting."
                   control={(
-                    <input
-                      type="checkbox"
+                    <Toggle
                       checked={desktopPreferences.closeToTray}
-                      onChange={(e) => { void handleDesktopPreferenceChange({ closeToTray: e.target.checked }); }}
+                      onChange={(checked) => { void handleDesktopPreferenceChange({ closeToTray: checked }); }}
+                      label="Hide window on close"
                     />
                   )}
                 />
                 <SettingRow
-                  label="Hide Repaste when I press Cmd+Q"
-                  description="Cmd+Q hides Repaste to the tray instead of fully closing it."
+                  label="⌘Q keeps Repaste in the background"
+                  description="Quit from the tray menu when you really mean it."
                   control={(
-                    <input
-                      type="checkbox"
+                    <Toggle
                       checked={desktopPreferences.quitToBackground}
-                      onChange={(e) => { void handleDesktopPreferenceChange({ quitToBackground: e.target.checked }); }}
+                      onChange={(checked) => { void handleDesktopPreferenceChange({ quitToBackground: checked }); }}
+                      label="Cmd+Q keeps Repaste in the background"
                     />
                   )}
                 />
-                <p className="ui-text-muted px-1 text-xs">
-                  To fully close Repaste, use Tray &gt; Quit.
-                </p>
               </div>
             ) : null}
             <SettingRow
-              label="Open Repaste when I log in"
-              description="Start Repaste automatically when you sign in."
+              label="Start at login"
+              description="Your clipboard history starts when your Mac does."
               control={(
-                <input
-                  type="checkbox"
+                <Toggle
                   checked={desktopPreferences.startAtLogin}
-                  onChange={(e) => { void handleDesktopPreferenceChange({ startAtLogin: e.target.checked }); }}
+                  onChange={(checked) => { void handleDesktopPreferenceChange({ startAtLogin: checked }); }}
+                  label="Start at login"
                 />
               )}
             />
@@ -261,11 +277,11 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div>
-          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">Clipboard</h3>
-          <div className="mt-2 space-y-2">
+          <SectionTitle>Clipboard</SectionTitle>
+          <div className="mt-2.5">
             <SettingRow
-              label="Max history size"
-              description="Limit how many clips remain in history before older unpinned items are evicted."
+              label="History size"
+              description="Oldest unpinned clips are removed past this limit. Pinned clips are never removed."
               control={(
                 <input
                   type="number"
@@ -273,18 +289,18 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
                   value={maxHistorySizeInput}
                   onChange={(e) => setMaxHistorySizeInput(e.target.value)}
                   onBlur={() => { void handleMaxHistorySizeBlur(); }}
-                  className="ui-input w-24 rounded px-2 py-1 text-sm"
+                  className="ui-input ui-mono w-20 rounded-md px-2 py-1 text-right text-xs"
                 />
               )}
             />
             <SettingRow
-              label="Deduplicate consecutive copies"
-              description="Skip storing a new clip when it matches the latest capture."
+              label="Skip repeated copies"
+              description="Copying the same thing twice re-surfaces the existing clip instead of duplicating it."
               control={(
-                <input
-                  type="checkbox"
+                <Toggle
                   checked={settings.deduplicateConsecutive}
-                  onChange={(e) => { void handleDeduplicateChange(e.target.checked); }}
+                  onChange={(checked) => { void handleDeduplicateChange(checked); }}
+                  label="Skip repeated copies"
                 />
               )}
             />
@@ -292,16 +308,16 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div>
-          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">OCR</h3>
-          <div className="mt-2 space-y-2">
+          <SectionTitle>Text in images</SectionTitle>
+          <div className="mt-2.5">
             <SettingRow
-              label="Enable OCR"
-              description="Extract text from image clips and include it in search."
+              label="Read text from screenshots"
+              description="Uses Apple Vision on this Mac. Extracted text becomes searchable. Nothing leaves your machine."
               control={(
-                <input
-                  type="checkbox"
+                <Toggle
                   checked={desktopPreferences.enableOcr}
-                  onChange={(e) => { void handleDesktopPreferenceChange({ enableOcr: e.target.checked }); }}
+                  onChange={(checked) => { void handleDesktopPreferenceChange({ enableOcr: checked }); }}
+                  label="Read text from screenshots"
                 />
               )}
             />
@@ -309,10 +325,10 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div>
-          <h3 className="ui-text-muted text-xs font-medium uppercase tracking-wider">About</h3>
-          <div className="ui-text-muted mt-2 space-y-1 text-xs">
-            <p>Repaste v0.0.1</p>
-            <p>Clipboard history for text and images</p>
+          <SectionTitle>About</SectionTitle>
+          <div className="ui-text-muted mt-2.5 space-y-1 text-[11.5px] leading-relaxed">
+            <p><span className="ui-mono ui-text-secondary font-semibold">Repaste v0.0.1</span> — a local-first clipboard manager.</p>
+            <p>All data stays on this Mac. Open source · MIT license.</p>
           </div>
         </div>
       </div>
