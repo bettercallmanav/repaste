@@ -6,9 +6,13 @@ import { SearchBar } from "./components/SearchBar.tsx";
 import { ClipList } from "./components/ClipList.tsx";
 import { ClipDetail } from "./components/ClipDetail.tsx";
 import { MergeBar } from "./components/MergeBar.tsx";
-import { SettingsPanel } from "./components/Settings.tsx";
+import { SettingsPanel, applyStoredTheme } from "./components/Settings.tsx";
 import logoUrl from "./assets/repaste-icon.png";
 import "./app.css";
+
+// Apply the persisted theme before first paint so the body/window
+// background always matches the rendered theme.
+applyStoredTheme();
 
 type DesktopWindow = Window & {
   desktopBridge?: ClipboardDesktopBridge;

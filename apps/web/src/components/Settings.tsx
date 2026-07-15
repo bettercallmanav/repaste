@@ -41,6 +41,19 @@ function applyTheme(theme: Theme): void {
   }
 }
 
+/**
+ * Apply the stored theme at boot. Previously the theme was only applied
+ * when the Settings view mounted, so the body/window background could
+ * disagree with the rendered theme until Settings was opened once.
+ * Also follows OS appearance changes while the preference is "system".
+ */
+export function applyStoredTheme(): void {
+  applyTheme(getStoredTheme());
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (getStoredTheme() === "system") applyTheme("system");
+  });
+}
+
 const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: typeof Sun }> = [
   { value: "system", label: "System", icon: Monitor },
   { value: "light", label: "Light", icon: Sun },
@@ -189,7 +202,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="ui-divider flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <SettingsIcon className="ui-text-muted size-4" />
