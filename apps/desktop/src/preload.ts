@@ -10,18 +10,18 @@ import type {
 const bridge: ClipboardDesktopBridge = {
   getWsUrl: () => process.env.CLIPM_DESKTOP_WS_URL ?? null,
 
-  writeClipboard: (text: string) => ipcRenderer.invoke("clipboard:write", text),
+  writeClipboard: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.writeClipboard, text),
 
   writeImageDataUrl: (dataUrl: string) => ipcRenderer.invoke(IPC_CHANNELS.writeImageDataUrl, dataUrl),
 
   writeImageFile: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.writeImageFile, path),
 
-  readClipboard: () => ipcRenderer.invoke("clipboard:read"),
+  readClipboard: () => ipcRenderer.invoke(IPC_CHANNELS.readClipboard),
 
   showContextMenu: (items: readonly ContextMenuItem[]) =>
-    ipcRenderer.invoke("desktop:context-menu", items),
+    ipcRenderer.invoke(IPC_CHANNELS.contextMenu, items),
 
-  openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),
+  openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, url),
 
   getThemePreference: () => ipcRenderer.invoke(IPC_CHANNELS.getThemePreference),
 

@@ -31,7 +31,9 @@ export class ShortcutManager {
 
   unregister(): void {
     if (!this.registered) return;
-    globalShortcut.unregisterAll();
+    // Unregister only our own shortcut; unregisterAll() would clobber any
+    // shortcut registered elsewhere in the app.
+    globalShortcut.unregister(DEFAULT_TOGGLE_SHORTCUT);
     this.registered = false;
   }
 }

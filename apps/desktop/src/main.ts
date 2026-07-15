@@ -16,6 +16,7 @@ import { WindowManager } from "./windowManager.ts";
 import { TrayManager } from "./trayManager.ts";
 import { ShortcutManager } from "./shortcutManager.ts";
 import { ClipboardMonitor } from "./clipboardMonitor.ts";
+import { PendingCommandQueue } from "./commandQueue.ts";
 import { createOcrProvider } from "./ocr/createOcrProvider.ts";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -62,6 +63,9 @@ let serverWs: WebSocket | null = null;
 let isQuitting = false;
 let forceActualQuit = false;
 let nextServerRequestId = 1;
+let clipboardMonitorStarted = false;
+// Buffers commands while the server socket is down (e.g. mid-reconnect).
+const pendingCommands = new PendingCommandQueue(100);
 let themePreference: AppearanceTheme = "system";
 let desktopPreferences: DesktopPreferences = {
   backgroundRunning: DEFAULT_SETTINGS.backgroundRunning,
@@ -159,6 +163,12 @@ function syncWindowBackground(theme: AppearanceTheme): void {
   }
 }
 
+function handleNativeThemeUpdated(): void {
+  if (themePreference === "system") {
+    syncWindowBackground(themePreference);
+  }
+}
+
 function applyThemePreference(theme: AppearanceTheme): AppearanceTheme {
   const normalized = normalizeThemePreference(theme);
   themePreference = normalized;
@@ -215,6 +225,10 @@ function quitFully(): void {
  * The server runs as a long-lived Effect fiber in the Electron main process.
  * This avoids the need for ELECTRON_RUN_AS_NODE and simplifies native module handling.
  */
+const SERVER_RESTART_DELAY_MS = 2_000;
+const SERVER_MAX_RESTARTS = 3;
+let serverRestartCount = 0;
+
 function startServer(): void {
   // Ensure state directory exists for SQLite database
   mkdirSync(STATE_DIR, { recursive: true });
@@ -238,6 +252,13 @@ function startServer(): void {
     Effect.runPromise,
   ).catch((err) => {
     console.error("[server] Fatal error:", err);
+    // The desktop shell is useless without its embedded server; try to
+    // bring it back a few times before giving up.
+    if (!isQuitting && serverRestartCount < SERVER_MAX_RESTARTS) {
+      serverRestartCount++;
+      console.error(`[server] Restarting (attempt ${serverRestartCount}/${SERVER_MAX_RESTARTS})...`);
+      setTimeout(startServer, SERVER_RESTART_DELAY_MS);
+    }
   });
 }
 
@@ -277,8 +298,16 @@ function connectToServer(): void {
 
   serverWs.on("open", () => {
     console.log("Connected to server via WebSocket");
-    // Start clipboard monitoring once connected
-    clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR, ocrProvider });
+    // Flush captures buffered while disconnected before anything else,
+    // so clipboard history order is preserved.
+    pendingCommands.flush(sendDispatch);
+    // Start clipboard monitoring once; it keeps running across reconnects
+    // (start() would leak the old interval and re-seed the dedup snapshot,
+    // swallowing whatever was copied during the gap).
+    if (!clipboardMonitorStarted) {
+      clipboardMonitor.start(dispatchCommand, { imageAssetDir: IMAGE_ASSET_DIR, ocrProvider });
+      clipboardMonitorStarted = true;
+    }
     clipboardMonitor.setOcrEnabled(desktopPreferences.enableOcr);
     syncSettingsToServer({
       theme: themePreference,
@@ -298,7 +327,8 @@ function connectToServer(): void {
 
   serverWs.on("close", () => {
     serverWs = null;
-    clipboardMonitor.stop();
+    // Keep the clipboard monitor running: captures made while disconnected
+    // are queued in pendingCommands and flushed on reconnect.
     clearPendingServerRequests("Server connection closed");
     if (!isQuitting) {
       setTimeout(connectToServer, 1000);
@@ -310,8 +340,8 @@ function connectToServer(): void {
   });
 }
 
-function dispatchCommand(command: ClipboardCommand): void {
-  if (!serverWs || serverWs.readyState !== WebSocket.OPEN) return;
+function sendDispatch(command: ClipboardCommand): boolean {
+  if (!serverWs || serverWs.readyState !== WebSocket.OPEN) return false;
 
   const message = {
     id: String(Date.now()),
@@ -322,6 +352,15 @@ function dispatchCommand(command: ClipboardCommand): void {
   };
 
   serverWs.send(JSON.stringify(message));
+  return true;
+}
+
+function dispatchCommand(command: ClipboardCommand): void {
+  if (!sendDispatch(command)) {
+    // Socket is down: buffer for the reconnect flush. Re-sends are safe;
+    // the server deduplicates by commandId receipt.
+    pendingCommands.enqueue(command);
+  }
 }
 
 function clearPendingServerRequests(message: string): void {
@@ -435,13 +474,13 @@ async function backfillOcr(): Promise<void> {
       if (!serverWs || serverWs.readyState !== WebSocket.OPEN) break;
 
       try {
-        const ocrText = await ocrProvider.extractText(clip.imageAssetPath!);
-        if (ocrText) {
+        const result = await ocrProvider.extractText(clip.imageAssetPath!);
+        if (result.status === "ok") {
           dispatchCommand({
             commandId: crypto.randomUUID(),
             type: "clip.updateOcr",
             clipId: clip.id,
-            ocrText,
+            ocrText: result.text,
             updatedAt: new Date().toISOString(),
           } as ClipboardCommand);
         } else {
@@ -449,7 +488,7 @@ async function backfillOcr(): Promise<void> {
             commandId: crypto.randomUUID(),
             type: "clip.updateOcrStatus",
             clipId: clip.id,
-            ocrStatus: "failed",
+            ocrStatus: result.status === "empty" ? "skipped" : "failed",
             updatedAt: new Date().toISOString(),
           } as ClipboardCommand);
         }
@@ -485,13 +524,13 @@ async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<bo
   } as ClipboardCommand);
 
   try {
-    const ocrText = await ocrProvider.extractText(imageAssetPath);
-    if (ocrText) {
+    const result = await ocrProvider.extractText(imageAssetPath);
+    if (result.status === "ok") {
       dispatchCommand({
         commandId: crypto.randomUUID(),
         type: "clip.updateOcr",
         clipId,
-        ocrText,
+        ocrText: result.text,
         updatedAt: new Date().toISOString(),
       } as ClipboardCommand);
       return true;
@@ -500,7 +539,7 @@ async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<bo
       commandId: crypto.randomUUID(),
       type: "clip.updateOcrStatus",
       clipId,
-      ocrStatus: "failed",
+      ocrStatus: result.status === "empty" ? "skipped" : "failed",
       updatedAt: new Date().toISOString(),
     } as ClipboardCommand);
     return false;
@@ -810,11 +849,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     desktopPreferences = applyDesktopPreferences(loadDesktopPreferences());
     themePreference = applyThemePreference(loadThemePreference());
-    nativeTheme.on("updated", () => {
-      if (themePreference === "system") {
-        syncWindowBackground(themePreference);
-      }
-    });
+    nativeTheme.on("updated", handleNativeThemeUpdated);
 
     // Set WebSocket URL env for the preload script
     process.env.CLIPM_DESKTOP_WS_URL = WS_URL;
@@ -863,6 +898,7 @@ if (!gotLock) {
     isQuitting = true;
     clipboardMonitor.stop();
     shortcutManager.unregister();
+    nativeTheme.off("updated", handleNativeThemeUpdated);
     trayManager.destroy();
     windowManager.destroy();
     if (serverWs) {

@@ -162,13 +162,13 @@ export class ClipboardMonitor {
     }
 
     try {
-      const ocrText = await this.ocrProvider.extractText(imageAssetPath);
-      if (ocrText) {
+      const result = await this.ocrProvider.extractText(imageAssetPath);
+      if (result.status === "ok") {
         await Promise.resolve(handler({
           commandId: crypto.randomUUID(),
           type: "clip.updateOcr",
           clipId,
-          ocrText,
+          ocrText: result.text,
           updatedAt: new Date().toISOString(),
         } as ClipboardCommand));
       } else {
@@ -176,7 +176,8 @@ export class ClipboardMonitor {
           commandId: crypto.randomUUID(),
           type: "clip.updateOcrStatus",
           clipId,
-          ocrStatus: "failed",
+          // No recognizable text is "skipped"; only real errors are "failed".
+          ocrStatus: result.status === "empty" ? "skipped" : "failed",
           updatedAt: new Date().toISOString(),
         } as ClipboardCommand));
       }
