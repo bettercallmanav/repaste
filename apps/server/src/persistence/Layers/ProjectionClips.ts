@@ -403,6 +403,12 @@ const makeProjectionClipRepository = Effect.gen(function* () {
       Effect.mapError(toPersistenceSqlError("ProjectionClips.incrementPasteCount")),
     );
 
+  const updateCapturedAt: ProjectionClipRepositoryShape["updateCapturedAt"] = (id, capturedAt) =>
+    sql`UPDATE projection_clips SET captured_at = ${capturedAt} WHERE id = ${id}`.pipe(
+      Effect.asVoid,
+      Effect.mapError(toPersistenceSqlError("ProjectionClips.updateCapturedAt")),
+    );
+
   const softDelete: ProjectionClipRepositoryShape["softDelete"] = (id, deletedAt) =>
     SqlSchema.void({
       Request: SoftDeleteInput,
@@ -424,6 +430,7 @@ const makeProjectionClipRepository = Effect.gen(function* () {
     updateOcrText,
     updateOcrStatus,
     incrementPasteCount,
+    updateCapturedAt,
     softDelete,
   } satisfies ProjectionClipRepositoryShape;
 });

@@ -123,6 +123,11 @@ const makeProjectionPipeline = Effect.gen(function* () {
         const p = event.payload as any;
         return clipRepo.incrementPasteCount(p.clipId);
       }
+      case "clip.captureDeduplicated": {
+        // Re-copying identical content re-surfaces the existing clip.
+        const p = event.payload as any;
+        return clipRepo.updateCapturedAt(p.clipId, p.capturedAt);
+      }
       case "clip.ocrUpdated": {
         const p = event.payload as any;
         return clipRepo.updateOcrText(p.clipId, p.ocrText);

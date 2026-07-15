@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { Duplex } from "node:stream";
 
@@ -42,6 +43,18 @@ export class Server extends ServiceMap.Service<Server, ServerShape>()(
 ) {}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function tokensMatch(candidate: string, expected: string): boolean {
+  // Constant-time comparison; length mismatch is compared against self to
+  // avoid leaking length via early return timing.
+  const candidateBuf = Buffer.from(candidate, "utf8");
+  const expectedBuf = Buffer.from(expected, "utf8");
+  if (candidateBuf.length !== expectedBuf.length) {
+    timingSafeEqual(expectedBuf, expectedBuf);
+    return false;
+  }
+  return timingSafeEqual(candidateBuf, expectedBuf);
+}
 
 function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
   socket.end(
@@ -142,6 +155,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const subscriptionsScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(subscriptionsScope, Exit.void));
 
+  // A client that stops reading accumulates ws buffer; past this point we
+  // drop it rather than buffer unboundedly. It reconnects and re-syncs via
+  // a fresh snapshot (renderers refresh on reconnect).
+  const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
   yield* Stream.runForEach(engine.streamDomainEvents, (event) =>
     Ref.get(clients).pipe(
       Effect.flatMap((set) =>
@@ -149,10 +167,16 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           const push: WsPush = { channel: WS_CHANNELS.domainEvent, data: event };
           const msg = JSON.stringify(push);
           for (const ws of set) {
+            if (ws.readyState !== ws.OPEN) continue;
+            if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+              console.warn("[wsServer] dropping slow client (send buffer full)");
+              ws.terminate();
+              continue;
+            }
             try {
               ws.send(msg);
-            } catch {
-              // dead socket
+            } catch (err) {
+              console.warn("[wsServer] failed to push domain event to client", err);
             }
           }
         }),
@@ -201,7 +225,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     if (config.authToken) {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
       const token = url.searchParams.get("token");
-      if (token !== config.authToken) {
+      if (!token || !tokensMatch(token, config.authToken)) {
         rejectUpgrade(socket, 401, "Invalid auth token");
         return;
       }

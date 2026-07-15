@@ -66,6 +66,10 @@ export interface ProjectionClipRepositoryShape {
     ocrStatus: string,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
   readonly incrementPasteCount: (id: ClipId) => Effect.Effect<void, ProjectionRepositoryError>;
+  readonly updateCapturedAt: (
+    id: ClipId,
+    capturedAt: string,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
   readonly softDelete: (
     id: ClipId,
     deletedAt: string,

@@ -1,5 +1,6 @@
 import {
   ClipCapturedPayload as ContractsClipCapturedPayload,
+  ClipCaptureDeduplicatedPayload as ContractsClipCaptureDeduplicatedPayload,
   ClipPinnedPayload as ContractsClipPinnedPayload,
   ClipUnpinnedPayload as ContractsClipUnpinnedPayload,
   ClipDeletedPayload as ContractsClipDeletedPayload,
@@ -17,6 +18,7 @@ import {
 
 // Server-internal alias surface, backed by contract schemas as the source of truth.
 export const ClipCapturedPayload = ContractsClipCapturedPayload;
+export const ClipCaptureDeduplicatedPayload = ContractsClipCaptureDeduplicatedPayload;
 export const ClipPinnedPayload = ContractsClipPinnedPayload;
 export const ClipUnpinnedPayload = ContractsClipUnpinnedPayload;
 export const ClipDeletedPayload = ContractsClipDeletedPayload;

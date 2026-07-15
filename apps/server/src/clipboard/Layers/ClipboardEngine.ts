@@ -11,7 +11,7 @@ import {
   type ClipboardDispatchError,
 } from "../Errors.ts";
 import { decideClipboardCommand } from "../decider.ts";
-import { createEmptyReadModel, projectEvent } from "../projector.ts";
+import { createEmptyReadModel, projectEvent, projectNewEvents } from "../projector.ts";
 import { ClipboardProjectionPipeline } from "../Services/ProjectionPipeline.ts";
 import {
   ClipboardEngineService,
@@ -40,22 +40,23 @@ const makeClipboardEngine = Effect.gen(function* () {
   const eventPubSub = yield* PubSub.unbounded<ClipboardEvent>();
 
   const processEnvelope = (envelope: CommandEnvelope): Effect.Effect<void> => {
-    const dispatchStartSequence = readModel.snapshotSequence;
-
-    // If the transaction fails, replay any events persisted concurrently
+    // If the dispatch fails, fold in any events that were persisted but not
+    // yet applied to the read model. The cursor is read at reconcile time
+    // (this Effect.gen body runs lazily) so events already applied — e.g.
+    // when the failure happened after the transaction committed and the
+    // read model advanced — are never re-applied. projectNewEvents also
+    // skips stale sequences as defense in depth, and only the events it
+    // actually applied are published (no duplicate broadcasts).
     const reconcileReadModelAfterDispatchFailure = Effect.gen(function* () {
       const persistedEvents = yield* Stream.runCollect(
-        eventStore.readFromSequence(dispatchStartSequence),
+        eventStore.readFromSequence(readModel.snapshotSequence),
       ).pipe(Effect.map((chunk): ClipboardEvent[] => Array.from(chunk)));
       if (persistedEvents.length === 0) return;
 
-      let nextReadModel = readModel;
-      for (const persistedEvent of persistedEvents) {
-        nextReadModel = yield* projectEvent(nextReadModel, persistedEvent);
-      }
-      readModel = nextReadModel;
+      const reconciled = yield* projectNewEvents(readModel, persistedEvents);
+      readModel = reconciled.model;
 
-      for (const persistedEvent of persistedEvents) {
+      for (const persistedEvent of reconciled.applied) {
         yield* PubSub.publish(eventPubSub, persistedEvent);
       }
     });

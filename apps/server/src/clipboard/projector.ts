@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import { toProjectorDecodeError, type ClipboardProjectorDecodeError } from "./Errors.ts";
 import {
   ClipCapturedPayload,
+  ClipCaptureDeduplicatedPayload,
   ClipPinnedPayload,
   ClipUnpinnedPayload,
   ClipDeletedPayload,
@@ -235,6 +236,20 @@ export function projectEvent(
         }),
       );
 
+    case "clip.captureDeduplicated":
+      return decodeForEvent(ClipCaptureDeduplicatedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((p) => {
+          const clip = nextBase.clips.find((c) => c.id === p.clipId);
+          if (!clip || clip.deletedAt !== null) return nextBase;
+          // Re-copying identical content re-surfaces the existing clip.
+          const bumped: Clip = { ...clip, capturedAt: p.capturedAt };
+          return {
+            ...nextBase,
+            clips: [bumped, ...nextBase.clips.filter((c) => c.id !== p.clipId)],
+          };
+        }),
+      );
+
     case "clip.ocrUpdated":
       return decodeForEvent(ClipOcrUpdatedPayload, event.payload, event.type, "payload").pipe(
         Effect.map((p) => ({
@@ -305,4 +320,32 @@ export function projectEvent(
       return Effect.succeed(nextBase);
     }
   }
+}
+
+/**
+ * Fold only events newer than the model's snapshotSequence, skipping
+ * anything already applied. Returns the next model plus the events that
+ * were actually applied, so callers publish exactly those.
+ *
+ * projectEvent is not idempotent (re-applying clip.captured duplicates
+ * the clip; clip.pasted double-increments pasteCount), so replay paths
+ * such as dispatch-failure reconciliation must go through this guard.
+ */
+export function projectNewEvents(
+  model: ClipboardReadModel,
+  events: ReadonlyArray<ClipboardEvent>,
+): Effect.Effect<
+  { readonly model: ClipboardReadModel; readonly applied: ReadonlyArray<ClipboardEvent> },
+  ClipboardProjectorDecodeError
+> {
+  return Effect.gen(function* () {
+    let next = model;
+    const applied: ClipboardEvent[] = [];
+    for (const event of events) {
+      if (event.sequence <= next.snapshotSequence) continue;
+      next = yield* projectEvent(next, event);
+      applied.push(event);
+    }
+    return { model: next, applied } as const;
+  });
 }
