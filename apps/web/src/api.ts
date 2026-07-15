@@ -19,4 +19,6 @@ export const api = {
     transport.request<{ clips: Clip[] }>("clipboard.search", { query, filters }),
 
   subscribe: transport.subscribe.bind(transport),
+
+  onReconnect: transport.onReconnect.bind(transport),
 };

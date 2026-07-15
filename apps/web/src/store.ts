@@ -9,6 +9,7 @@ import { parseSearchQuery } from "./lib/searchQueryParser.ts";
 let latestSearchRequestId = 0;
 let initPromise: Promise<void> | null = null;
 let unsubscribeDomainEvents: (() => void) | null = null;
+let unsubscribeReconnect: (() => void) | null = null;
 
 type DesktopWindow = Window & {
   desktopBridge?: ClipboardDesktopBridge;
@@ -34,13 +35,6 @@ function normalizeSearchFilters(filters: ClipSearchFilters | undefined): ClipSea
 
 function hasActiveSearch(query: string, filters: ClipSearchFilters | undefined): boolean {
   return query.trim().length > 0 || Object.keys(normalizeSearchFilters(filters)).length > 0;
-}
-
-function getSearchRequestKey(query: string, filters: ClipSearchFilters | undefined): string {
-  return JSON.stringify({
-    query: query.trim(),
-    filters: normalizeSearchFilters(filters),
-  });
 }
 
 interface ClipboardStore {
@@ -133,7 +127,6 @@ async function runSearch(
   query: string,
   filters: ClipSearchFilters,
   set: (state: Partial<ClipboardStore>) => void,
-  get: () => ClipboardStore,
 ): Promise<void> {
   if (!hasActiveSearch(query, filters)) {
     latestSearchRequestId++;
@@ -152,13 +145,13 @@ async function runSearch(
 
   const normalizedQuery = ftsQuery.trim();
   const requestId = ++latestSearchRequestId;
-  const requestKey = getSearchRequestKey(query, filters);
   set({ searchLoading: true, searchResolvedQuery: "" });
 
   try {
     const { clips } = await api.search(normalizedQuery, mergedFilters);
+    // Only the newest dispatched request may apply its results; anything
+    // older was superseded (a follow-up search will overwrite shortly).
     if (requestId !== latestSearchRequestId) return;
-    if (getSearchRequestKey(get().searchQuery, get().searchFilters) !== requestKey) return;
     set({ searchResults: clips, searchResolvedQuery: normalizedQuery, searchLoading: false });
   } catch (err) {
     if (requestId === latestSearchRequestId) {
@@ -179,7 +172,7 @@ async function refreshSnapshot(
     knownTags: snapshot.knownTags,
   });
 
-  await runSearch(get().searchQuery, get().searchFilters, set, get);
+  await runSearch(get().searchQuery, get().searchFilters, set);
 }
 
 export const useClipboardStore = create<ClipboardStore>((set, get) => ({
@@ -212,6 +205,13 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
           void refreshSnapshot(set, get).catch(console.error);
         });
       }
+
+      if (!unsubscribeReconnect) {
+        // Events broadcast while disconnected are gone; re-sync on reconnect.
+        unsubscribeReconnect = api.onReconnect(() => {
+          void refreshSnapshot(set, get).catch(console.error);
+        });
+      }
     })();
 
     return initPromise;
@@ -228,7 +228,7 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
     })),
 
   search: async (query = get().searchQuery, filters = get().searchFilters) =>
-    runSearch(query, filters, set, get),
+    runSearch(query, filters, set),
 
   clearSearch: () => {
     latestSearchRequestId++;
@@ -282,6 +282,13 @@ export const useClipboardStore = create<ClipboardStore>((set, get) => ({
       type: "clip.delete",
       clipId,
     } as ClipboardCommand);
+    const { selectedClipId, selectedClipIds } = get();
+    set({
+      ...(selectedClipId === clipId ? { selectedClipId: null } : {}),
+      ...(selectedClipIds.includes(clipId)
+        ? { selectedClipIds: selectedClipIds.filter((id) => id !== clipId) }
+        : {}),
+    });
   },
 
   tagClip: async (clipId, tag) => {

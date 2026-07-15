@@ -33,6 +33,12 @@ export class WsTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly url: string;
+  // Incremented per connect()/dispose(); listeners on stale sockets no-op.
+  private generation = 0;
+  private hasConnected = false;
+  // Requests made while disconnected wait here and flush on open.
+  private readonly outbox: WsRequestEnvelope[] = [];
+  private readonly reconnectListeners = new Set<() => void>();
 
   constructor(url?: string) {
     const bridgeUrl = (window as { desktopBridge?: { getWsUrl(): string } }).desktopBridge?.getWsUrl();
@@ -81,33 +87,79 @@ export class WsTransport {
     };
   }
 
+  /** Fires after the connection is re-established (not on the first connect). */
+  onReconnect(listener: () => void): () => void {
+    this.reconnectListeners.add(listener);
+    return () => {
+      this.reconnectListeners.delete(listener);
+    };
+  }
+
   dispose() {
     this.disposed = true;
+    this.generation++;
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error("Transport disposed"));
-    }
-    this.pending.clear();
+    this.rejectPending("Transport disposed");
+    this.outbox.length = 0;
+    this.reconnectListeners.clear();
     this.ws?.close();
     this.ws = null;
   }
 
+  private rejectPending(message: string) {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error(message));
+    }
+    this.pending.clear();
+  }
+
   private connect() {
     if (this.disposed) return;
+    const generation = ++this.generation;
     const ws = new WebSocket(this.url);
+    this.ws = ws;
 
     ws.addEventListener("open", () => {
-      this.ws = ws;
+      if (generation !== this.generation || this.disposed) {
+        ws.close();
+        return;
+      }
       this.reconnectAttempt = 0;
+      this.flushOutbox();
+      if (this.hasConnected) {
+        for (const listener of this.reconnectListeners) {
+          try {
+            listener();
+          } catch { /* swallow */ }
+        }
+      }
+      this.hasConnected = true;
     });
 
-    ws.addEventListener("message", (event) => this.handleMessage(event.data));
+    ws.addEventListener("message", (event) => {
+      if (generation !== this.generation) return;
+      this.handleMessage(event.data);
+    });
     ws.addEventListener("close", () => {
+      if (generation !== this.generation) return;
       this.ws = null;
+      // In-flight requests cannot complete on a dead socket; not-yet-sent
+      // requests stay in the outbox and flush on reconnect.
+      this.rejectPending("Connection closed");
       this.scheduleReconnect();
     });
     ws.addEventListener("error", () => {});
+  }
+
+  private flushOutbox() {
+    while (this.outbox.length > 0) {
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      const message = this.outbox.shift()!;
+      // Skip requests that already timed out while waiting.
+      if (!this.pending.has(message.id)) continue;
+      this.ws.send(JSON.stringify(message));
+    }
   }
 
   private handleMessage(raw: unknown) {
@@ -153,15 +205,9 @@ export class WsTransport {
       this.ws.send(JSON.stringify(message));
       return;
     }
-    // Wait for connection
-    const check = setInterval(() => {
-      if (this.disposed) { clearInterval(check); return; }
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        clearInterval(check);
-        this.ws.send(JSON.stringify(message));
-      }
-    }, 50);
-    setTimeout(() => clearInterval(check), REQUEST_TIMEOUT_MS);
+    // Not connected yet: hold until open. The request's own timeout in
+    // request() still bounds how long it can wait.
+    this.outbox.push(message);
   }
 
   private scheduleReconnect() {

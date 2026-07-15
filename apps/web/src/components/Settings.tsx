@@ -126,17 +126,20 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
     setDesktopPreferences(nextPreferences);
 
     try {
+      // The bridge normalizes/persists and is the source of truth; sync the
+      // backend from what it actually stored, not from our optimistic patch.
+      let effective = nextPreferences;
       const desktopBridge = getDesktopBridge();
       if (desktopBridge?.setDesktopPreferences) {
-        const persisted = await desktopBridge.setDesktopPreferences(patch);
-        setDesktopPreferences(persisted);
+        effective = await desktopBridge.setDesktopPreferences(patch);
+        setDesktopPreferences(effective);
       }
       await updateSettings({
-        backgroundRunning: nextPreferences.backgroundRunning,
-        startAtLogin: nextPreferences.startAtLogin,
-        closeToTray: nextPreferences.closeToTray,
-        quitToBackground: nextPreferences.quitToBackground,
-        enableOcr: nextPreferences.enableOcr,
+        backgroundRunning: effective.backgroundRunning,
+        startAtLogin: effective.startAtLogin,
+        closeToTray: effective.closeToTray,
+        quitToBackground: effective.quitToBackground,
+        enableOcr: effective.enableOcr,
       });
     } catch (error) {
       console.error("Failed to update desktop preferences", error);
