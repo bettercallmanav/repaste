@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { isImageFilePath, mimeTypeForImagePath, pathsFromFilenamesPlist } from "./imageFileUtils.ts";
+import {
+  assetIdFromFileName,
+  isAssetFileFor,
+  isImageFilePath,
+  mimeTypeForImagePath,
+  pathsFromFilenamesPlist,
+} from "./imageFileUtils.ts";
+
+const SHA1 = "89bece4b5286fd7bd7fef3c5dc9d2bcd0eff7efe";
+const OTHER_SHA1 = "0982747c15c9938a0ee220ebdb08cb9b7597c476";
+
+describe("isAssetFileFor", () => {
+  it("matches the asset regardless of stored extension", () => {
+    // The bug this replaces assumed `.png` and leaked every other format.
+    expect(isAssetFileFor(`${SHA1}.png`, SHA1)).toBe(true);
+    expect(isAssetFileFor(`${SHA1}.heic`, SHA1)).toBe(true);
+    expect(isAssetFileFor(`${SHA1}.jpeg`, SHA1)).toBe(true);
+    expect(isAssetFileFor(SHA1, SHA1)).toBe(true);
+  });
+
+  it("does not match a different asset", () => {
+    expect(isAssetFileFor(`${OTHER_SHA1}.png`, SHA1)).toBe(false);
+  });
+
+  it("does not match on a shared prefix without a separator", () => {
+    expect(isAssetFileFor(`${SHA1}extra.png`, SHA1)).toBe(false);
+  });
+});
+
+describe("assetIdFromFileName", () => {
+  it("strips the extension", () => {
+    expect(assetIdFromFileName(`${SHA1}.png`)).toBe(SHA1);
+    expect(assetIdFromFileName(`${SHA1}.heic`)).toBe(SHA1);
+  });
+
+  it("leaves an extensionless name alone", () => {
+    expect(assetIdFromFileName(SHA1)).toBe(SHA1);
+  });
+});
 
 describe("isImageFilePath", () => {
   it("accepts common image extensions, case-insensitive", () => {

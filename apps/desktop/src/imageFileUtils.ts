@@ -45,6 +45,24 @@ export function mimeTypeForImagePath(filePath: string): string | null {
 }
 
 /**
+ * Whether a stored asset file belongs to the given asset id.
+ *
+ * Asset files are named `<sha1><ext>`, and the extension varies: pasteboard
+ * bitmaps are re-encoded to `.png` while Finder file-copies keep the original
+ * (`.heic`, `.webp`, …). Cleanup therefore can't reconstruct the filename from
+ * the id alone — assuming `.png` is what leaked every non-PNG asset. The id is
+ * a 40-char SHA-1, so a prefix match is unambiguous.
+ */
+export function isAssetFileFor(fileName: string, assetId: string): boolean {
+  return fileName === assetId || fileName.startsWith(`${assetId}.`);
+}
+
+/** The asset id a stored file belongs to — its name minus any extension. */
+export function assetIdFromFileName(fileName: string): string {
+  return fileName.replace(/\.[^.]*$/, "");
+}
+
+/**
  * Extract file paths from macOS's NSFilenamesPboardType plist XML — the
  * pasteboard type that lists EVERY file in a Finder copy (multi-select
  * included), which is how we distinguish single-image copies from

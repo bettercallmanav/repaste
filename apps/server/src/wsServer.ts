@@ -106,6 +106,24 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case "clipboard.getSnapshot":
         return yield* engine.getReadModel();
 
+      case "clipboard.listClips":
+        // Summary fields only, active clips only. Keep this projection lean:
+        // its whole reason to exist is to avoid shipping imageDataUrl.
+        return yield* engine.getReadModel().pipe(
+          Effect.map((readModel) => ({
+            clips: readModel.clips
+              .filter((clip) => clip.deletedAt === null)
+              .map((clip) => ({
+                id: clip.id,
+                preview: clip.preview,
+                contentType: clip.contentType,
+                imageAssetId: clip.imageAssetId,
+                pinned: clip.pinned,
+                capturedAt: clip.capturedAt,
+              })),
+          })),
+        );
+
       case "clipboard.dispatchCommand":
         return yield* engine.dispatch(body.command);
 

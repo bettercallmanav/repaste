@@ -303,6 +303,27 @@ export const Clip = Schema.Struct({
 });
 export type Clip = typeof Clip.Type;
 
+/**
+ * A deliberately tiny projection of {@link Clip} for consumers that only need
+ * to identify clips — the tray's recent list and the desktop's image-asset
+ * refcount check.
+ *
+ * The full read model inlines `imageDataUrl` (a base64 PNG) for every image
+ * clip, so `clipboard.getSnapshot` grows into the megabytes. Both of those
+ * consumers used to pull that whole payload and discard all of it, on every
+ * domain event — see the note in CLAUDE.md. This carries no content, no
+ * base64, and no metadata.
+ */
+export const ClipSummary = Schema.Struct({
+  id: ClipId,
+  preview: Schema.String,
+  contentType: ContentType,
+  imageAssetId: Schema.NullOr(Schema.String),
+  pinned: Schema.Boolean,
+  capturedAt: IsoDateTime,
+});
+export type ClipSummary = typeof ClipSummary.Type;
+
 export const Snippet = Schema.Struct({
   id: SnippetId,
   title: Schema.String,

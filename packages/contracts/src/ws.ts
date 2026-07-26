@@ -1,5 +1,11 @@
 import { Schema } from "effect";
-import { ClipboardCommand, ClipboardEvent, ClipboardReadModel, ContentType } from "./clipboard.ts";
+import {
+  ClipboardCommand,
+  ClipboardEvent,
+  ClipboardReadModel,
+  ClipSummary,
+  ContentType,
+} from "./clipboard.ts";
 
 export const ClipSearchFilters = Schema.Struct({
   contentType: Schema.optional(ContentType),
@@ -15,6 +21,9 @@ export type ClipSearchFilters = typeof ClipSearchFilters.Type;
 
 export const WsRequestBody = Schema.Union([
   Schema.TaggedStruct("clipboard.getSnapshot", {}),
+  // Active clips only, summary fields only — the cheap alternative to
+  // getSnapshot for consumers that don't render clip contents.
+  Schema.TaggedStruct("clipboard.listClips", {}),
   Schema.TaggedStruct("clipboard.dispatchCommand", {
     command: ClipboardCommand,
   }),
@@ -67,6 +76,13 @@ export const DispatchResponse = Schema.Struct({
   sequence: Schema.Number,
 });
 export type DispatchResponse = typeof DispatchResponse.Type;
+
+// ─── List Clips Response ─────────────────────────────────────────────────────
+
+export const ListClipsResponse = Schema.Struct({
+  clips: Schema.Array(ClipSummary),
+});
+export type ListClipsResponse = typeof ListClipsResponse.Type;
 
 // ─── Search Response ─────────────────────────────────────────────────────────
 

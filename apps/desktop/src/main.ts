@@ -1,5 +1,5 @@
 import { app, clipboard, dialog, ipcMain, shell, Menu, nativeImage, nativeTheme, type BrowserWindow } from "electron";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,12 @@ import WebSocket from "ws";
 import { Effect, Layer } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { DEFAULT_SETTINGS, WS_CHANNELS } from "@clipm/contracts";
-import type { ClipboardCommand, ClipboardReadModel } from "@clipm/contracts";
+import type {
+  ClipboardCommand,
+  ClipboardReadModel,
+  ClipSummary,
+  ListClipsResponse,
+} from "@clipm/contracts";
 import { IPC_CHANNELS } from "@clipm/contracts/ipc";
 import type { AppearanceTheme, DesktopPreferences } from "@clipm/contracts/ipc";
 import { makeServerProgram, makeRuntimeLayer } from "@clipm/server/main";
@@ -17,6 +22,7 @@ import { TrayManager } from "./trayManager.ts";
 import { ShortcutManager } from "./shortcutManager.ts";
 import { ClipboardMonitor } from "./clipboardMonitor.ts";
 import { PendingCommandQueue } from "./commandQueue.ts";
+import { assetIdFromFileName, isAssetFileFor } from "./imageFileUtils.ts";
 import { createOcrProvider } from "./ocr/createOcrProvider.ts";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -64,6 +70,7 @@ let isQuitting = false;
 let forceActualQuit = false;
 let nextServerRequestId = 1;
 let clipboardMonitorStarted = false;
+let orphanSweepDone = false;
 // Buffers commands while the server socket is down (e.g. mid-reconnect).
 const pendingCommands = new PendingCommandQueue(100);
 let themePreference: AppearanceTheme = "system";
@@ -204,7 +211,37 @@ function applyDesktopPreferences(
   return desktopPreferences;
 }
 
+/**
+ * Mirrors the desktop-owned settings we have already pushed to the server, so
+ * an unchanged re-push can be skipped entirely.
+ *
+ * This matters more than it looks. `settings.update` has no dirty check on the
+ * server ([decider.ts] emits `settings.updated` unconditionally), every domain
+ * event is broadcast, and both the tray and the renderer refresh on every
+ * broadcast — so one redundant sync used to fan out into full read-model
+ * fetches. Since this function is called on *every* socket open, a reconnect
+ * loop turned into a write-and-broadcast loop: the real event log holds 795
+ * `settings.updated` events against 63 actual clips, including a burst of one
+ * per second for 271 consecutive seconds.
+ *
+ * Skipping here rather than in the decider is deliberate: a decider that
+ * returns no events trips the engine's "Command produced no events" invariant,
+ * which writes a *rejected* receipt and runs the reconciliation path — trading
+ * one junk row for another.
+ *
+ * Safe against drift because the server never reads these fields back: the only
+ * settings it acts on are `maxHistorySize` and `deduplicateConsecutive`, and
+ * neither is ever sent from here.
+ */
+let lastSyncedSettings: Partial<ClipboardReadModel["settings"]> = {};
+
 function syncSettingsToServer(settings: Partial<ClipboardReadModel["settings"]>): void {
+  // Per-key compare: callers send different subsets of the settings.
+  const keys = Object.keys(settings) as (keyof ClipboardReadModel["settings"])[];
+  const changed = keys.some((key) => lastSyncedSettings[key] !== settings[key]);
+  if (!changed) return;
+
+  lastSyncedSettings = { ...lastSyncedSettings, ...settings };
   dispatchCommand({
     commandId: crypto.randomUUID(),
     type: "settings.update",
@@ -257,6 +294,10 @@ function startServer(): void {
     if (!isQuitting && serverRestartCount < SERVER_MAX_RESTARTS) {
       serverRestartCount++;
       console.error(`[server] Restarting (attempt ${serverRestartCount}/${SERVER_MAX_RESTARTS})...`);
+      // A restart normally replays the event log, so settings survive — but if
+      // the crash was the store itself, they may not. Drop the mirror so the
+      // next connect re-pushes rather than assuming the server still agrees.
+      lastSyncedSettings = {};
       setTimeout(startServer, SERVER_RESTART_DELAY_MS);
     }
   });
@@ -319,6 +360,13 @@ function connectToServer(): void {
     });
     refreshTrayRecentClips();
     void backfillOcr();
+    // Once per launch, not per reconnect.
+    if (!orphanSweepDone) {
+      orphanSweepDone = true;
+      void sweepOrphanedImageAssets().catch((error) => {
+        console.error("[assets] Orphan sweep failed:", error);
+      });
+    }
   });
 
   serverWs.on("message", (raw) => {
@@ -394,20 +442,86 @@ function sendServerRequest<T>(body: { _tag: string; [key: string]: unknown }): P
   });
 }
 
-async function cleanupImageAsset(imageAssetId: string): Promise<void> {
-  const filePath = path.join(IMAGE_ASSET_DIR, `${imageAssetId}.png`);
-  if (!existsSync(filePath)) return;
+function listActiveClips(): Promise<readonly ClipSummary[]> {
+  return sendServerRequest<ListClipsResponse>({ _tag: "clipboard.listClips" })
+    .then((response) => response.clips);
+}
 
-  // Guard: don't delete if another active clip shares this image asset (SHA1 dedup)
+/** Every stored file for an asset id — the extension can't be assumed. */
+function imageAssetFiles(imageAssetId: string): string[] {
   try {
-    const snapshot = await sendServerRequest<ClipboardReadModel>({ _tag: "clipboard.getSnapshot" });
-    const otherClipUsesAsset = snapshot.clips.some(
-      (clip) => clip.imageAssetId === imageAssetId && clip.deletedAt === null,
-    );
-    if (otherClipUsesAsset) return;
-    await unlink(filePath);
+    return readdirSync(IMAGE_ASSET_DIR)
+      .filter((name) => isAssetFileFor(name, imageAssetId))
+      .map((name) => path.join(IMAGE_ASSET_DIR, name));
+  } catch {
+    return [];
+  }
+}
+
+async function cleanupImageAsset(imageAssetId: string): Promise<void> {
+  const filePaths = imageAssetFiles(imageAssetId);
+  if (filePaths.length === 0) return;
+
+  // Guard: don't delete if another active clip shares this image asset (SHA1
+  // dedup). Deliberately listClips and not getSnapshot — this fires per deleted
+  // image clip, and at the history cap every capture deletes one.
+  try {
+    const clips = await listActiveClips();
+    if (clips.some((clip) => clip.imageAssetId === imageAssetId)) return;
+    await Promise.all(filePaths.map((filePath) => unlink(filePath)));
   } catch {
     // Best-effort cleanup — don't crash on failure
+  }
+}
+
+/**
+ * One-time sweep for assets whose clips are already gone — the backlog left by
+ * the `${id}.png` bug above, plus anything a failed cleanup missed.
+ *
+ * Skips recently-written files so an asset whose `clip.capture` is still in
+ * flight is never mistaken for an orphan.
+ *
+ * Two properties make this safe to run right after connecting, and both are
+ * worth preserving if that call site moves:
+ *   - the server replays its whole event log before it accepts connections, so
+ *     the clip set we compare against is complete, never partially loaded;
+ *   - the clipboard monitor only starts inside the socket's open handler, so on
+ *     the first connect of a launch nothing can be sitting in `pendingCommands`
+ *     waiting to claim an asset we're about to judge.
+ */
+const ORPHAN_SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
+
+async function sweepOrphanedImageAssets(): Promise<void> {
+  let fileNames: string[];
+  try {
+    fileNames = readdirSync(IMAGE_ASSET_DIR);
+  } catch {
+    return;
+  }
+  if (fileNames.length === 0) return;
+
+  // If this throws, we sweep nothing — never delete on an unknown clip set.
+  const clips = await listActiveClips();
+  const referenced = new Set(
+    clips.map((clip) => clip.imageAssetId).filter((id): id is string => id !== null),
+  );
+
+  const cutoff = Date.now() - ORPHAN_SWEEP_MIN_AGE_MS;
+  let removed = 0;
+  for (const fileName of fileNames) {
+    if (referenced.has(assetIdFromFileName(fileName))) continue;
+
+    const filePath = path.join(IMAGE_ASSET_DIR, fileName);
+    try {
+      if (statSync(filePath).mtimeMs > cutoff) continue;
+      await unlink(filePath);
+      removed++;
+    } catch {
+      // Best-effort — a file we can't stat or unlink is left alone
+    }
+  }
+  if (removed > 0) {
+    console.log(`[assets] Removed ${removed} orphaned image asset(s)`);
   }
 }
 
@@ -556,15 +670,12 @@ async function runOcrForClip(clipId: string, imageAssetPath: string): Promise<bo
 }
 
 function refreshTrayRecentClips(): void {
-  void sendServerRequest<ClipboardReadModel>({
-    _tag: "clipboard.getSnapshot",
-  })
-    .then((snapshot) => {
-      trayManager.updateRecentClips(
-        snapshot.clips
-          .filter((clip) => clip.deletedAt === null)
-          .map((clip) => ({ id: clip.id, preview: clip.preview })),
-      );
+  // listClips, not getSnapshot: this runs on every domain event, and the tray
+  // only needs id + preview. getSnapshot inlines a base64 PNG for every image
+  // clip, so this used to push megabytes through the socket per event.
+  void listActiveClips()
+    .then((clips) => {
+      trayManager.updateRecentClips(clips.map((clip) => ({ id: clip.id, preview: clip.preview })));
     })
     .catch((error) => {
       if (!isQuitting) {
