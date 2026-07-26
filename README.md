@@ -57,6 +57,17 @@ This is expected for an unsigned build — it is not a warning about the app's c
 
 `⏎` and `⌘1`–`⌘9` place the clip on your clipboard; pasting into the previous app is still a manual `⌘V`.
 
+## Settings
+
+Appearance, background and login behaviour, history size, duplicate handling, and OCR are all configurable in-app.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">
+    <img alt="Repaste settings: appearance mode, background and login behaviour, history size, and duplicate handling" src="docs/settings-light.png" width="470">
+  </picture>
+</p>
+
 ## Search
 
 Repaste supports free-text search and structured filters together.
