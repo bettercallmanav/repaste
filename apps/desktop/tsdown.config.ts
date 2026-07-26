@@ -16,6 +16,10 @@ const main = defineConfig({
     "@effect/sql-sqlite-bun/SqliteClient",
   ],
   noExternal: /.*/,
+  // Bundling every dependency is the point of this config, so opt out of
+  // tsdown's unintended-inlining check. It only warns interactively but is
+  // fatal when CI=true, which is how it went unnoticed until CI existed.
+  inlineOnly: false,
 });
 
 // Preload — MUST be built separately to avoid rolldown code-splitting.
@@ -30,6 +34,7 @@ const preload = defineConfig({
   clean: false,
   external: ["electron"],
   noExternal: /.*/,
+  inlineOnly: false,
 });
 
 export default [main, preload];
