@@ -6,6 +6,13 @@ Repaste is a local-first clipboard manager for macOS. It keeps your clipboard hi
 
 Everything runs on-device. There are no network calls beyond localhost.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img alt="The Repaste window: a search field above a list of recent clips, each tagged with its detected type" src="docs/screenshot-light.png" width="470">
+  </picture>
+</p>
+
 ## Download
 
 **[Download the latest release →](https://github.com/bettercallmanav/repaste/releases/latest)**
