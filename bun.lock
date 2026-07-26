@@ -14,7 +14,7 @@
     },
     "apps/desktop": {
       "name": "@clipm/desktop",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@clipm/contracts": "workspace:*",
         "@clipm/server": "workspace:*",
@@ -37,7 +37,7 @@
     },
     "apps/server": {
       "name": "@clipm/server",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@clipm/contracts": "workspace:*",
         "@clipm/shared": "workspace:*",
@@ -60,7 +60,7 @@
     },
     "apps/web": {
       "name": "@clipm/web",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@clipm/contracts": "workspace:*",
         "class-variance-authority": "^0.7.1",
@@ -84,7 +84,7 @@
     },
     "packages/contracts": {
       "name": "@clipm/contracts",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -98,7 +98,7 @@
     },
     "packages/shared": {
       "name": "@clipm/shared",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@clipm/contracts": "workspace:*",
       },
