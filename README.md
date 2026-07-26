@@ -6,12 +6,9 @@ Repaste is a local-first clipboard manager for macOS. It keeps your clipboard hi
 
 Everything runs on-device. There are no network calls beyond localhost.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-    <img alt="The Repaste window: a search field above a list of recent clips, each tagged with its detected type" src="docs/screenshot-light.png" width="470">
-  </picture>
-</p>
+| Light | Dark |
+| :---: | :---: |
+| <img alt="The Repaste window in light mode: a search field above a list of recent clips, each tagged with its detected type" src="docs/screenshot-light.png"> | <img alt="The same window in dark mode" src="docs/screenshot-dark.png"> |
 
 ## Download
 
@@ -61,12 +58,9 @@ This is expected for an unsigned build — it is not a warning about the app's c
 
 Appearance, background and login behaviour, history size, duplicate handling, and OCR are all configurable in-app.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">
-    <img alt="Repaste settings: appearance mode, background and login behaviour, history size, and duplicate handling" src="docs/settings-light.png" width="470">
-  </picture>
-</p>
+| Light | Dark |
+| :---: | :---: |
+| <img alt="Repaste settings in light mode: appearance mode, background and login behaviour, history size, and duplicate handling" src="docs/settings-light.png"> | <img alt="The same settings pane in dark mode" src="docs/settings-dark.png"> |
 
 ## Search
 
