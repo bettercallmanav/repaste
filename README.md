@@ -1,39 +1,56 @@
 # Repaste
 
-Repaste is a local-first clipboard manager built with Electron, React, Bun, and an Effect-based backend. It stores clipboard history on your machine, supports both text and image clips, and adds fast search, tags, tray access, and macOS OCR for image text.
+Repaste is a local-first clipboard manager for macOS. It keeps your clipboard history on your own machine, handles text and images, and adds fast full-text search, tags, tray access, and Apple Vision OCR so you can find text inside screenshots.
+
+Everything runs on-device. There are no network calls beyond localhost.
+
+## Download
+
+**[Download the latest release →](https://github.com/bettercallmanav/repaste/releases/latest)**
+
+Grab either `Repaste-<version>-arm64.dmg` or `Repaste-<version>-arm64-mac.zip`, open it, and drag **Repaste** to `/Applications`.
+
+> **Apple Silicon only.** The published builds are `arm64`. They will not run on an Intel Mac — build from source instead.
+
+### First launch
+
+Builds are ad-hoc signed and not notarized, so macOS will refuse to open Repaste the first time. Either:
+
+- Open **System Settings → Privacy & Security**, scroll to the message about Repaste being blocked, and choose **Open Anyway**; or
+- Clear the quarantine flag yourself:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Repaste.app
+```
+
+This is expected for an unsigned build — it is not a warning about the app's contents. Notarization needs a paid Apple Developer account.
 
 ## Features
 
-- Local-first clipboard history stored on-device
-- Text and image clip capture
-- macOS Vision OCR for image clips
-- Full-text clip search with filters
-- Search query syntax such as `type:image`, `tag:design`, `app:Chrome`, `from:2026-03-01`
-- Pinning, tagging, merging, and deleting clips
-- Tray integration and global window workflow
+- Local-first clipboard history, stored on-device
+- Text and image capture, including image files copied in Finder
+- Apple Vision OCR on image clips, with the extracted text searchable
+- Full-text search with structured filters
+- Pin, tag, merge, and delete clips
+- Global shortcut, menu-bar tray, and keyboard-driven navigation
 - Light, dark, and system appearance modes
 
-## Current Platform Status
+## Keyboard
 
-- macOS: primary supported desktop target
-- Windows/Linux: codebase is structured for future packaging, but OCR is currently macOS-only
+| Key | Action |
+| --- | --- |
+| `⌘⇧V` | Show Repaste from anywhere (global) |
+| `↑` `↓` | Move through the list |
+| `→` `←` | Expand / collapse the highlighted clip |
+| `⏎` | Copy the highlighted clip |
+| `Esc` | Clear the current search |
+| `⌘1`–`⌘9` | Copy a pinned clip by slot |
 
-## Install
-
-For end users, the intended distribution is a packaged desktop build from GitHub releases.
-
-On macOS, the desktop packaging config currently targets:
-
-- `dmg`
-- `zip`
-
-If a release asset is attached to the repository, download the latest macOS package and move `Repaste.app` to `/Applications`.
+`⏎` and `⌘1`–`⌘9` place the clip on your clipboard; pasting into the previous app is still a manual `⌘V`.
 
 ## Search
 
-Repaste supports both free-text search and structured filters.
-
-Examples:
+Repaste supports free-text search and structured filters together.
 
 ```text
 design system
@@ -44,46 +61,43 @@ pinned:true
 from:2026-03-01 to:2026-03-10 invoice
 ```
 
-Supported query prefixes:
+Supported prefixes: `type:` `tag:` `app:` `pinned:` `from:` `to:`
 
-- `type:`
-- `tag:`
-- `app:`
-- `pinned:`
-- `from:`
-- `to:`
+Values containing spaces can be quoted, e.g. `app:"Google Chrome"`.
 
 ## OCR
 
-Repaste uses Apple Vision on macOS to extract text from captured image clips.
+Repaste uses Apple Vision to extract text from image clips.
 
-- OCR runs asynchronously after image capture
-- OCR text becomes searchable
-- OCR status is tracked per clip
-- Existing architecture leaves room for a future cross-platform OCR provider
+- Runs asynchronously after capture, so a copy is never blocked on it
+- Extracted text is indexed and searchable alongside everything else
+- Status is tracked per clip: `pending`, `ready`, `skipped` (no text found), or `failed`
+- The provider is behind an interface, leaving room for a cross-platform one later
+
+## Platform support
+
+- **macOS (Apple Silicon)** — the supported target
+- **Windows / Linux** — packaging targets exist in the build config and the codebase is structured for them, but neither is built or tested, and OCR is macOS-only
 
 ## Development
 
-### Requirements
-
-- Bun `1.3.9`
-- macOS for the current OCR/build flow
-
-### Install dependencies
+Requires [Bun](https://bun.sh) `1.3.9+`. Building the OCR helper needs macOS with Xcode command line tools.
 
 ```bash
 bun install
 ```
 
-### Run workspace tasks
+Workspace tasks:
 
 ```bash
-bun run dev
-bun run build
+bun run dev         # every app in parallel, via Turbo
+bun run build       # contracts build first
 bun run typecheck
+bun run test
+bun run lint
 ```
 
-### Run individual apps
+Individual apps:
 
 ```bash
 bun run dev:web
@@ -91,22 +105,16 @@ bun run dev:server
 bun run dev:desktop
 ```
 
-## Package The Desktop App
-
-Desktop packaging lives under [`./apps/desktop`](./apps/desktop).
-
-Build and package for macOS:
+### Packaging
 
 ```bash
 cd apps/desktop
 bun run pack:mac
 ```
 
-That produces release output under:
+Output lands in `apps/desktop/release/` as a `.dmg` and a `.zip`.
 
-- `apps/desktop/release/`
-
-## Project Structure
+## Project structure
 
 ```text
 apps/
@@ -118,23 +126,20 @@ packages/
   shared/    shared utilities
 ```
 
+Packages use the `@clipm/*` scope, an earlier name for the project.
+
 ## Architecture
 
-Repaste runs as a desktop app with three main layers:
+Three layers in one desktop app:
 
-1. Electron desktop shell
-2. Embedded local backend server
-3. React renderer UI
+1. **Electron shell** — polls the clipboard, owns the tray, global shortcut, and windows
+2. **Embedded backend** — an Effect-TS server running in-process, not a subprocess
+3. **React renderer** — the UI
 
-Clipboard events are captured on the desktop side, processed through an event-sourced backend, projected into SQLite, and rendered in the UI through snapshot and event updates.
+The data flow is one-directional and event-sourced. A clipboard change becomes a command, which a pure decider turns into events; those are appended to a SQLite event log and folded into projections in a single transaction, then broadcast to clients. The UI never mutates state locally — it dispatches commands and waits for the event to come back.
 
-## Notes
-
-- Image clips now use asset metadata and file-backed storage rather than only large inline payloads
-- OCR is implemented for macOS through a Vision helper
-- Search supports both full-text matching and structured filters
-- The repository is a Bun workspace / Turbo monorepo
+Image clips are stored as files on disk and referenced by SHA-1, rather than being carried around as inline payloads.
 
 ## License
 
-See [`LICENSE`](./LICENSE).
+MIT — see [`LICENSE`](./LICENSE).
