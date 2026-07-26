@@ -1,5 +1,7 @@
 # Repaste
 
+[![CI](https://github.com/bettercallmanav/repaste/actions/workflows/ci.yml/badge.svg)](https://github.com/bettercallmanav/repaste/actions/workflows/ci.yml)
+
 Repaste is a local-first clipboard manager for macOS. It keeps your clipboard history on your own machine, handles text and images, and adds fast full-text search, tags, tray access, and Apple Vision OCR so you can find text inside screenshots.
 
 Everything runs on-device. There are no network calls beyond localhost.
